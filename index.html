@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>月排班表</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #f4f3ef;
+    --surface: #ffffff;
+    --ink: #1c1c1a;
+    --ink-soft: #6b6a64;
+    --line: #dddbd2;
+    --accent: #2f5d50;
+    --accent-soft: #e3ede9;
+    --mine: #fff6e3;
+    --mine-line: #e8c97a;
+    --shift-zao: #d8e8f0;
+    --shift-zhong: #e6e3d4;
+    --shift-wan: #d9d3e4;
+    --shift-xiu: #e8dcdc;
+    --shift-none: #f0efe9;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* ---------- 登入畫面 ---------- */
+  #login-view {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    padding: 24px;
+  }
+  #login-view .brand {
+    font-size: 13px;
+    letter-spacing: 3px;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+  }
+  #login-view h1 {
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: 2px;
+  }
+  #login-view p { color: var(--ink-soft); font-size: 14px; text-align: center; }
+  .btn-google {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 13px 26px;
+    border-radius: 8px;
+    font-size: 15px;
+    cursor: pointer;
+    transition: opacity .15s;
+  }
+  .btn-google:hover { opacity: .88; }
+  /* ---------- 主畫面 ---------- */
+  #app-view { display: none; }
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+  }
+  header .title { font-size: 17px; font-weight: 700; letter-spacing: 1px; }
+  header .who { font-size: 13px; color: var(--ink-soft); }
+  header .who .badge {
+    display: inline-block;
+    background: var(--accent-soft);
+    color: var(--accent);
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-left: 6px;
+    font-weight: 600;
+  }
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .controls button, .controls select {
+    font-family: inherit;
+    font-size: 14px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    padding: 7px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .controls button:hover { background: var(--bg); }
+  .controls .month-label { font-weight: 600; min-width: 92px; text-align: center; }
+  .btn-logout { color: var(--ink-soft); }
+  /* ---------- 表格 ---------- */
+  .table-wrap {
+    overflow: auto;
+    padding: 16px;
+    max-height: calc(100vh - 130px);
+  }
+  table { border-collapse: collapse; background: var(--surface); }
+  th, td {
+    border: 1px solid var(--line);
+    text-align: center;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  thead th {
+    background: var(--accent);
+    color: #fff;
+    padding: 8px 6px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    font-weight: 600;
+  }
+  thead th.col-name {
+    left: 0;
+    z-index: 15;
+    min-width: 130px;
+  }
+  th.weekend { background: #244a40; }
+  tbody td.cell-name {
+    position: sticky;
+    left: 0;
+    background: var(--surface);
+    text-align: left;
+    padding: 8px 12px;
+    font-weight: 600;
+    z-index: 5;
+    min-width: 130px;
+  }
+  tbody td.cell-name .badge-no {
+    display: block;
+    font-size: 11px;
+    color: var(--ink-soft);
+    font-weight: 400;
+  }
+  tbody tr.is-mine td.cell-name {
+    background: var(--mine);
+    border-left: 3px solid var(--mine-line);
+  }
+  tbody tr.is-mine td.shift-cell {
+    background: var(--mine);
+  }
+  td.shift-cell { padding: 0; min-width: 46px; height: 38px; }
+  td.shift-cell select {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 13px;
+    text-align: center;
+    text-align-last: center;
+    cursor: pointer;
+    color: var(--ink);
+    appearance: none;
+  }
+  td.shift-cell.readonly { color: var(--ink-soft); }
+  td.shift-cell .static-val {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+  }
+  td.weekend-col { background: #faf9f4; }
+  /* 班別配色 */
+  .v-早 { background: var(--shift-zao) !important; }
+  .v-中 { background: var(--shift-zhong) !important; }
+  .v-晚 { background: var(--shift-wan) !important; }
+  .v-休 { background: var(--shift-xiu) !important; }
+  .v-未排 { background: transparent; }
+  tbody tr.is-mine td.shift-cell.v-早 { background: #cfe2ec !important; }
+  tbody tr.is-mine td.shift-cell.v-中 { background: #ddd9c6 !important; }
+  tbody tr.is-mine td.shift-cell.v-晚 { background: #cfc8de !important; }
+  tbody tr.is-mine td.shift-cell.v-休 { background: #ddcfcf !important; }
+  /* ---------- 狀態列 ---------- */
+  #status-bar {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--ink);
+    color: #fff;
+    padding: 9px 18px;
+    border-radius: 999px;
+    font-size: 13px;
+    opacity: 0;
+    transition: opacity .2s;
+    pointer-events: none;
+    z-index: 50;
+  }
+  #status-bar.show { opacity: 1; }
+  #status-bar.error { background: #8a3b2e; }
+  .legend {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding: 0 20px 20px;
+    font-size: 12px;
+    color: var(--ink-soft);
+    align-items: center;
+  }
+  .legend .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .legend .sw {
+    width: 14px; height: 14px;
+    border-radius: 3px;
+    border: 1px solid var(--line);
+    display: inline-block;
+  }
+  .loading {
+    padding: 60px;
+    text-align: center;
+    color: var(--ink-soft);
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ 登入畫面 ============ -->
+<div id="login-view">
+  <div class="brand">SPFH &nbsp;·&nbsp; 排班系統</div>
+  <h1>月排班表</h1>
+  <p>請使用您的 Google 帳號登入<br>系統會依您的身分開放對應的編輯權限</p>
+  <button class="btn-google" id="btn-login">使用 Google 登入</button>
+  <p id="login-hint" style="color:#8a3b2e;"></p>
+</div>
+
+<!-- ============ 主畫面 ============ -->
+<div id="app-view">
+  <header>
+    <div>
+      <div class="title">月排班表</div>
+      <div class="who" id="who"></div>
+    </div>
+    <div class="controls">
+      <button id="prev-month">‹</button>
+      <span class="month-label" id="month-label"></span>
+      <button id="next-month">›</button>
+      <button id="refresh">重新整理</button>
+      <button class="btn-logout" id="btn-logout">登出</button>
+    </div>
+  </header>
+  <div class="table-wrap" id="table-wrap">
+    <div class="loading">載入中…</div>
+  </div>
+  <div class="legend">
+    <span class="chip"><span class="sw" style="background:var(--mine);border-color:var(--mine-line)"></span>您的列</span>
+    <span class="chip"><span class="sw v-早"></span>早</span>
+    <span class="chip"><span class="sw v-中"></span>中</span>
+    <span class="chip"><span class="sw v-晚"></span>晚</span>
+    <span class="chip"><span class="sw v-休"></span>休</span>
+    <span class="chip">空白 = 未排</span>
+  </div>
+</div>
+
+<div id="status-bar"></div>
+
+<script>
+/* =======================================================
+   設定區 —— 部署到 Vercel 時，這兩個值由環境變數注入
+   本機測試可直接把值貼在這裡
+   ======================================================= */
+const SUPABASE_URL = "https://rpwuhzrwekziwhemfszj.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_a5AZ3zUsrdrrhEer8YTsFA_RU6s4A8x";
+
+const SHIFT_OPTIONS = ["未排", "早", "中", "晚", "休"];
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ---------- 全域狀態 ---------- */
+let me = null;            // 目前登入者在 roster 的那筆 { id, badge_no, name, email, role }
+let roster = [];          // 全部人員
+let viewYear, viewMonth;  // 目前檢視的年、月（month 為 1-12）
+
+/* ---------- 工具 ---------- */
+function showStatus(msg, isError) {
+  const bar = document.getElementById("status-bar");
+  bar.textContent = msg;
+  bar.className = "show" + (isError ? " error" : "");
+  clearTimeout(bar._t);
+  bar._t = setTimeout(() => { bar.className = ""; }, 2600);
+}
+function pad(n) { return String(n).padStart(2, "0"); }
+function daysInMonth(y, m) { return new Date(y, m, 0).getDate(); }
+function dateStr(y, m, d) { return `${y}-${pad(m)}-${pad(d)}`; }
+
+/* ---------- 登入流程 ---------- */
+document.getElementById("btn-login").onclick = async () => {
+  const { error } = await sb.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: window.location.href }
+  });
+  if (error) {
+    document.getElementById("login-hint").textContent = "登入失敗：" + error.message;
+  }
+};
+document.getElementById("btn-logout").onclick = async () => {
+  await sb.auth.signOut();
+  location.reload();
+};
+
+/* 啟動時檢查是否已登入 */
+(async function init() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    await enterApp(session);
+  }
+  // 監聽登入狀態變化（OAuth 導回後會觸發）
+  sb.auth.onAuthStateChange(async (_event, session) => {
+    if (session && document.getElementById("app-view").style.display !== "block") {
+      await enterApp(session);
+    }
+  });
+})();
+
+/* ---------- 進入主畫面 ---------- */
+async function enterApp(session) {
+  const email = session.user.email;
+
+  // 用 email 在 roster 找出「我是誰」
+  const { data, error } = await sb
+    .from("roster")
+    .select("id, badge_no, name, email, role")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (error) {
+    document.getElementById("login-hint").textContent = "讀取人員資料失敗：" + error.message;
+    return;
+  }
+  if (!data) {
+    // 登入成功，但這個 Gmail 不在名單裡
+    document.getElementById("login-hint").textContent =
+      "您的帳號（" + email + "）不在排班名單中，請聯絡管理者。";
+    await sb.auth.signOut();
+    return;
+  }
+
+  me = data;
+  document.getElementById("login-view").style.display = "none";
+  document.getElementById("app-view").style.display = "block";
+
+  const roleLabel = me.role === "admin" ? "管理者" : "一般人員";
+  document.getElementById("who").innerHTML =
+    me.name + "（" + me.badge_no + "）<span class='badge'>" + roleLabel + "</span>";
+
+  const now = new Date();
+  viewYear = now.getFullYear();
+  viewMonth = now.getMonth() + 1;
+
+  // 載入全部人員（一次就好）
+  const r = await sb.from("roster")
+    .select("id, badge_no, name")
+    .eq("active", true)
+    .order("badge_no");
+  roster = r.data || [];
+
+  await loadMonth();
+}
+
+/* ---------- 載入並繪製某個月 ---------- */
+async function loadMonth() {
+  document.getElementById("month-label").textContent = viewYear + " 年 " + viewMonth + " 月";
+  const wrap = document.getElementById("table-wrap");
+  wrap.innerHTML = "<div class='loading'>載入中…</div>";
+
+  const nDays = daysInMonth(viewYear, viewMonth);
+  const first = dateStr(viewYear, viewMonth, 1);
+  const last = dateStr(viewYear, viewMonth, nDays);
+
+  // 取這個月所有排班紀錄（append-only：同一格可能多筆，取最新）
+  const { data, error } = await sb
+    .from("shift_log")
+    .select("entity_id, work_date, value, created_at")
+    .gte("work_date", first)
+    .lte("work_date", last)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    wrap.innerHTML = "<div class='loading'>載入失敗：" + error.message + "</div>";
+    return;
+  }
+
+  // 投影：每個 (entity_id, work_date) 取 created_at 最新的 value
+  const latest = {};
+  for (const row of data) {
+    latest[row.entity_id + "|" + row.work_date] = row.value;
+  }
+
+  renderTable(nDays, latest);
+}
+
+/* ---------- 繪製表格 ---------- */
+function renderTable(nDays, latest) {
+  const wrap = document.getElementById("table-wrap");
+  const weekNames = ["日", "一", "二", "三", "四", "五", "六"];
+
+  let html = "<table><thead><tr>";
+  html += "<th class='col-name'>番號 / 姓名</th>";
+  for (let d = 1; d <= nDays; d++) {
+    const wd = new Date(viewYear, viewMonth - 1, d).getDay();
+    const isWk = (wd === 0 || wd === 6);
+    html += "<th class='" + (isWk ? "weekend" : "") + "'>" +
+            d + "<br><span style='font-weight:400;font-size:11px'>" +
+            weekNames[wd] + "</span></th>";
+  }
+  html += "</tr></thead><tbody>";
+
+  for (const person of roster) {
+    const isMine = person.id === me.id;
+    const canEdit = isMine || me.role === "admin";
+    html += "<tr class='" + (isMine ? "is-mine" : "") + "'>";
+    html += "<td class='cell-name'>" + person.name +
+            "<span class='badge-no'>" + person.badge_no + "</span></td>";
+    for (let d = 1; d <= nDays; d++) {
+      const ds = dateStr(viewYear, viewMonth, d);
+      const val = latest[person.id + "|" + ds] || "未排";
+      const wd = new Date(viewYear, viewMonth - 1, d).getDay();
+      const wkCls = (wd === 0 || wd === 6) ? " weekend-col" : "";
+      if (canEdit) {
+        let opts = "";
+        for (const o of SHIFT_OPTIONS) {
+          opts += "<option value='" + o + "'" + (o === val ? " selected" : "") + ">" +
+                  (o === "未排" ? "—" : o) + "</option>";
+        }
+        html += "<td class='shift-cell v-" + val + wkCls +
+                "' data-entity='" + person.id + "' data-date='" + ds + "'>" +
+                "<select>" + opts + "</select></td>";
+      } else {
+        html += "<td class='shift-cell readonly v-" + val + wkCls + "'>" +
+                "<span class='static-val'>" + (val === "未排" ? "" : val) + "</span></td>";
+      }
+    }
+    html += "</tr>";
+  }
+  html += "</tbody></table>";
+  wrap.innerHTML = html;
+
+  // 綁定可編輯格子的變更事件
+  wrap.querySelectorAll("td.shift-cell select").forEach(sel => {
+    sel.onchange = (e) => onCellChange(e.target);
+  });
+}
+
+/* ---------- 寫回：使用者改了一格 ---------- */
+async function onCellChange(selectEl) {
+  const td = selectEl.closest("td");
+  const entityId = td.dataset.entity;
+  const workDate = td.dataset.date;
+  const newValue = selectEl.value;
+
+  // append-only：永遠 insert 一筆新紀錄，不覆蓋
+  const { error } = await sb.from("shift_log").insert({
+    entity_id: entityId,
+    work_date: workDate,
+    value: newValue,
+    created_by: me.email
+  });
+
+  if (error) {
+    showStatus("儲存失敗：" + error.message, true);
+    return;
+  }
+  // 更新該格配色
+  td.className = "shift-cell v-" + newValue +
+    (td.classList.contains("weekend-col") ? " weekend-col" : "");
+  showStatus("已儲存");
+}
+
+/* ---------- 月份切換 ---------- */
+document.getElementById("prev-month").onclick = () => {
+  viewMonth--;
+  if (viewMonth < 1) { viewMonth = 12; viewYear--; }
+  loadMonth();
+};
+document.getElementById("next-month").onclick = () => {
+  viewMonth++;
+  if (viewMonth > 12) { viewMonth = 1; viewYear++; }
+  loadMonth();
+};
+document.getElementById("refresh").onclick = () => loadMonth();
+</script>
+</body>
+</html>
