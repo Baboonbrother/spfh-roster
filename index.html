@@ -130,6 +130,10 @@
     font-size: 10px; padding: 0 5px; border-radius: 3px;
     display: inline-block; margin-top: 2px; font-weight: 600;
   }
+  /* 未完成任務：紅框標示 */
+  td.task-cell.unfinished {
+    box-shadow: inset 0 0 0 2px #c0392b;
+  }
   /* 狀態列 */
   #status-bar {
     position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
@@ -217,6 +221,8 @@
   <!-- 任務分頁的說明列 -->
   <div class="palette" id="task-palette" style="display:none">
     <span class="hint" id="task-hint">點任一格新增或編輯任務</span>
+    <button class="chip-btn" id="task-assign-btn" style="display:none;background:var(--accent);color:#fff">指派任務給框選的格子</button>
+    <span class="sel-count" id="task-sel-count"></span>
   </div>
 
   <div class="table-wrap" id="table-wrap">
@@ -229,10 +235,20 @@
   <div class="box">
     <h3 id="tm-title">編輯任務</h3>
     <div class="sub" id="tm-sub"></div>
+
     <label>任務內容</label>
     <textarea id="tm-content" placeholder="輸入任務內容…"></textarea>
+    <div id="tm-content-readonly" style="display:none;font-size:14px;padding:8px;background:var(--bg);border-radius:7px;margin-bottom:12px;white-space:pre-wrap;min-height:40px;"></div>
+
     <label>狀態</label>
     <div class="status-row" id="tm-status"></div>
+
+    <div id="tm-confirm" style="display:none;margin-bottom:14px;">
+      <label style="color:#8a3b2e;">改為「完成」請輸入「完成」二字確認：</label>
+      <input id="tm-confirm-input" type="text" placeholder="在此輸入：完成"
+        style="width:100%;font-family:inherit;font-size:14px;padding:8px;border:1px solid var(--line);border-radius:7px;">
+    </div>
+
     <div class="modal-actions">
       <button id="tm-cancel">取消</button>
       <button class="primary" id="tm-save">儲存</button>
@@ -351,6 +367,17 @@ document.querySelectorAll(".tab").forEach(t => {
       currentTab === "shift" ? "flex" : "none";
     document.getElementById("task-palette").style.display =
       currentTab === "task" ? "flex" : "none";
+    // 任務分頁：admin 才顯示「指派」按鈕與框選提示
+    if (currentTab === "task") {
+      const isAdmin = me.role === "admin";
+      document.getElementById("task-assign-btn").style.display = isAdmin ? "inline-block" : "none";
+      document.getElementById("task-hint").textContent = isAdmin
+        ? "框選格子可批次指派；或點單格編輯。"
+        : "點自己的格子回報任務狀態。";
+    }
+    clearSelection();
+    clearTaskSelection();
+    updateSelCount();
     renderTable();
   };
 });
@@ -457,6 +484,7 @@ function taskCellHtml(entityId, ds, canEdit){
   const t = taskLatest[entityId + "|" + ds];
   let inner = "";
   let bg = "#ffffff";
+  let unfinished = false;
   if (t && (t.content || t.status)) {
     const stt = taskStatusMap[t.status];
     const stColor = stt ? stt.color : "#e6e3d4";
@@ -467,8 +495,11 @@ function taskCellHtml(entityId, ds, canEdit){
                ";color:" + textColorFor(stColor) + "'>" +
                (stt ? stt.label : t.status) + "</span>";
     }
+    // 有任務內容、且狀態不是「完成」→ 視為未完成
+    if (t.content && t.status !== "完成") unfinished = true;
   }
   return "<td class='task-cell" + (canEdit ? "" : " readonly") +
+         (unfinished ? " unfinished" : "") +
          "' data-entity='" + entityId + "' data-date='" + ds +
          "' data-edit='" + (canEdit ? 1 : 0) + "' style='background:" + bg + "'>" +
          inner + "</td>";
@@ -549,27 +580,133 @@ async function applyShiftToSelection(code){
   showStatus("已儲存 " + keys.length + " 格");
 }
 
-/* =================== 任務：點格子開彈窗 =================== */
-function bindTaskEvents(){
-  const wrap = document.getElementById("table-wrap");
-  wrap.querySelectorAll("td.task-cell").forEach(td => {
-    if (td.dataset.edit !== "1") return;
-    td.onclick = () => openTaskModal(td.dataset.entity, td.dataset.date);
-  });
+/* =================== 任務：互動 =================== */
+let taskSelected = new Set();
+let taskDragging = false, taskDragRow = null;
+
+function clearTaskSelection(){
+  taskSelected.clear();
+  document.querySelectorAll("td.task-cell.selected").forEach(td => td.classList.remove("selected"));
+}
+function updateTaskSelCount(){
+  const n = taskSelected.size;
+  document.getElementById("task-sel-count").textContent = n > 0 ? "已選 " + n + " 格" : "";
+}
+function toggleTaskCell(td, on){
+  const key = td.dataset.entity + "|" + td.dataset.date;
+  if (on) { taskSelected.add(key); td.classList.add("selected"); }
+  else { taskSelected.delete(key); td.classList.remove("selected"); }
 }
 
-function openTaskModal(entityId, ds){
-  modalTarget = { entityId, ds };
-  const person = roster.find(p => p.id === entityId);
-  const t = taskLatest[entityId + "|" + ds] || { content: "", status: "待辦" };
+function bindTaskEvents(){
+  const wrap = document.getElementById("table-wrap");
+  const isAdmin = me.role === "admin";
 
-  document.getElementById("tm-title").textContent = "任務 — " + (person ? person.name : "");
-  document.getElementById("tm-sub").textContent = ds;
-  document.getElementById("tm-content").value = t.content || "";
+  wrap.querySelectorAll("td.task-cell").forEach(td => {
+    if (td.dataset.edit !== "1") return;
 
+    if (isAdmin) {
+      // 管理者：框選（拖曳）；放開時若只點一格則開單格編輯
+      td.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        taskDragging = true; taskDragRow = td.dataset.entity;
+        clearTaskSelection();
+        toggleTaskCell(td, true); updateTaskSelCount();
+      });
+      td.addEventListener("mouseenter", () => {
+        if (taskDragging && td.dataset.entity === taskDragRow) {
+          toggleTaskCell(td, true); updateTaskSelCount();
+        }
+      });
+      td.addEventListener("touchstart", () => {
+        taskDragging = true; taskDragRow = td.dataset.entity;
+        clearTaskSelection();
+        toggleTaskCell(td, true); updateTaskSelCount();
+      }, { passive: true });
+    } else {
+      // 一般使用者：點自己的格子，回報狀態
+      td.onclick = () => openTaskModal(td.dataset.entity, td.dataset.date);
+    }
+  });
+
+  if (isAdmin) {
+    wrap.addEventListener("touchmove", (e) => {
+      if (!taskDragging) return;
+      const t = e.touches[0];
+      const el = document.elementFromPoint(t.clientX, t.clientY);
+      if (el && el.classList.contains("task-cell") &&
+          el.dataset.edit === "1" && el.dataset.entity === taskDragRow) {
+        toggleTaskCell(el, true); updateTaskSelCount();
+      }
+    }, { passive: true });
+  }
+}
+
+/* 管理者：放開滑鼠時，若只框到一格 → 視為單格編輯 */
+document.addEventListener("mouseup", () => {
+  if (taskDragging && currentTab === "task" && me && me.role === "admin") {
+    if (taskSelected.size === 1) {
+      const key = Array.from(taskSelected)[0];
+      const [eid, ds] = key.split("|");
+      clearTaskSelection(); updateTaskSelCount();
+      openTaskModal(eid, ds);
+    }
+  }
+  taskDragging = false;
+});
+document.addEventListener("touchend", () => { taskDragging = false; });
+
+/* 管理者：批次指派按鈕 */
+document.getElementById("task-assign-btn").onclick = () => {
+  if (taskSelected.size === 0) { showStatus("請先框選要指派的格子", true); return; }
+  openTaskModal(null, null, Array.from(taskSelected));
+};
+
+/* ---------- 任務編輯彈窗 ---------- */
+/* batchKeys 有值 = 管理者批次指派模式；否則 = 單格編輯 */
+function openTaskModal(entityId, ds, batchKeys){
+  const isBatch = !!batchKeys;
+  const isAdmin = me.role === "admin";
+  modalTarget = { entityId, ds, batchKeys: batchKeys || null };
+
+  const titleEl = document.getElementById("tm-title");
+  const subEl = document.getElementById("tm-sub");
+  const contentEdit = document.getElementById("tm-content");
+  const contentRead = document.getElementById("tm-content-readonly");
+
+  let curContent = "", curStatus = "待辦";
+  if (isBatch) {
+    titleEl.textContent = "批次指派任務";
+    subEl.textContent = "將套用到框選的 " + batchKeys.length + " 格";
+  } else {
+    const person = roster.find(p => p.id === entityId);
+    const t = taskLatest[entityId + "|" + ds] || { content: "", status: "待辦" };
+    curContent = t.content || ""; curStatus = t.status || "待辦";
+    titleEl.textContent = "任務 — " + (person ? person.name : "");
+    subEl.textContent = ds;
+  }
+
+  // 內容欄：管理者可編輯；一般使用者唯讀
+  const canEditContent = isAdmin;  // 只有管理者能改內容
+  if (canEditContent) {
+    contentEdit.style.display = "block";
+    contentRead.style.display = "none";
+    contentEdit.value = curContent;
+  } else {
+    contentEdit.style.display = "none";
+    contentRead.style.display = "block";
+    contentRead.textContent = curContent || "（管理者尚未填寫任務內容）";
+  }
+
+  // 狀態選項
   const statusBox = document.getElementById("tm-status");
   statusBox.innerHTML = "";
-  let picked = t.status || "待辦";
+  let picked = curStatus;
+  const confirmBox = document.getElementById("tm-confirm");
+  const confirmInput = document.getElementById("tm-confirm-input");
+  confirmBox.style.display = "none";
+  confirmInput.value = "";
+
   for (const s of taskStatuses) {
     const opt = document.createElement("div");
     opt.className = "status-opt" + (s.code === picked ? " picked" : "");
@@ -579,8 +716,14 @@ function openTaskModal(entityId, ds){
       picked = s.code;
       statusBox.querySelectorAll(".status-opt").forEach(o => o.classList.remove("picked"));
       opt.classList.add("picked");
+      // 改成「完成」→ 顯示打字確認
+      if (picked === "完成") {
+        confirmBox.style.display = "block";
+        confirmInput.value = "";
+      } else {
+        confirmBox.style.display = "none";
+      }
     };
-    opt.dataset.code = s.code;
     statusBox.appendChild(opt);
   }
   statusBox._getPicked = () => picked;
@@ -591,35 +734,79 @@ document.getElementById("tm-cancel").onclick = () => {
   document.getElementById("task-modal").style.display = "none";
   modalTarget = null;
 };
+
 document.getElementById("tm-save").onclick = async () => {
   if (!modalTarget) return;
-  const content = document.getElementById("tm-content").value.trim();
+  const isAdmin = me.role === "admin";
   const status = document.getElementById("tm-status")._getPicked();
-  const { entityId, ds } = modalTarget;
 
-  const { error } = await sb.from("task_log").insert({
-    entity_id: entityId, work_date: ds,
-    content: content, status: status, created_by: me.email
-  });
-  if (error) { showStatus("儲存失敗：" + error.message, true); return; }
-
-  taskLatest[entityId + "|" + ds] = { content, status };
-  const td = document.querySelector(
-    "td.task-cell[data-entity='" + entityId + "'][data-date='" + ds + "']");
-  if (td) {
-    const stt = taskStatusMap[status];
-    const stColor = stt ? stt.color : "#e6e3d4";
-    td.style.background = (content || status) ? "#fbfbf8" : "#ffffff";
-    let inner = "<div class='t-content'>" + escapeHtml(content) + "</div>";
-    inner += "<span class='t-status' style='background:" + stColor +
-             ";color:" + textColorFor(stColor) + "'>" +
-             (stt ? stt.label : status) + "</span>";
-    td.innerHTML = inner;
+  // 完成防呆：必須打字輸入「完成」
+  if (status === "完成") {
+    const typed = document.getElementById("tm-confirm-input").value.trim();
+    if (typed !== "完成") {
+      showStatus("請在確認欄輸入「完成」二字", true);
+      return;
+    }
   }
+
+  if (modalTarget.batchKeys) {
+    // 管理者批次指派
+    const content = document.getElementById("tm-content").value.trim();
+    const rows = modalTarget.batchKeys.map(key => {
+      const [entity_id, work_date] = key.split("|");
+      return { entity_id, work_date, content, status, created_by: me.email };
+    });
+    const { error } = await sb.from("task_log").insert(rows);
+    if (error) { showStatus("儲存失敗：" + error.message, true); return; }
+    for (const key of modalTarget.batchKeys) {
+      taskLatest[key] = { content, status };
+      paintTaskCell(key, content, status);
+    }
+    clearTaskSelection(); updateTaskSelCount();
+    showStatus("已指派 " + rows.length + " 格");
+  } else {
+    // 單格編輯
+    const { entityId, ds } = modalTarget;
+    let content;
+    if (isAdmin) {
+      content = document.getElementById("tm-content").value.trim();
+    } else {
+      // 一般使用者不能改內容，沿用原本內容
+      const old = taskLatest[entityId + "|" + ds];
+      content = old ? old.content : "";
+    }
+    const { error } = await sb.from("task_log").insert({
+      entity_id: entityId, work_date: ds,
+      content: content, status: status, created_by: me.email
+    });
+    if (error) { showStatus("儲存失敗：" + error.message, true); return; }
+    taskLatest[entityId + "|" + ds] = { content, status };
+    paintTaskCell(entityId + "|" + ds, content, status);
+    showStatus("任務已儲存");
+  }
+
   document.getElementById("task-modal").style.display = "none";
   modalTarget = null;
-  showStatus("任務已儲存");
 };
+
+/* 重畫單一任務格子 */
+function paintTaskCell(key, content, status){
+  const [eid, ds] = key.split("|");
+  const td = document.querySelector(
+    "td.task-cell[data-entity='" + eid + "'][data-date='" + ds + "']");
+  if (!td) return;
+  const stt = taskStatusMap[status];
+  const stColor = stt ? stt.color : "#e6e3d4";
+  td.style.background = (content || status) ? "#fbfbf8" : "#ffffff";
+  let inner = "<div class='t-content'>" + escapeHtml(content) + "</div>";
+  inner += "<span class='t-status' style='background:" + stColor +
+           ";color:" + textColorFor(stColor) + "'>" +
+           (stt ? stt.label : status) + "</span>";
+  td.innerHTML = inner;
+  // 有任務內容、且狀態不是「完成」→ 紅框
+  if (content && status !== "完成") td.classList.add("unfinished");
+  else td.classList.remove("unfinished");
+}
 
 /* =================== 月份切換 =================== */
 document.getElementById("prev-month").onclick = () => {
