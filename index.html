@@ -85,6 +85,10 @@
     transition: transform .08s;
   }
   .chip-btn:active { transform: scale(.94); }
+  .mode-btn { background: var(--surface); }
+  .mode-btn.on {
+    background: #1d6fe0; color: #fff; border-color: #1d6fe0;
+  }
   .palette .sel-count {
     margin-left: auto; font-size: 13px; font-weight: 700;
     padding: 4px 12px; border-radius: 999px;
@@ -247,13 +251,15 @@
 
   <!-- 勤務分頁的班別工具列 -->
   <div class="palette" id="shift-palette">
-    <span class="hint">點一格，再點同列另一格選整段，然後點班別：</span>
+    <button class="chip-btn mode-btn" id="shift-select-mode">批次選取</button>
+    <span class="hint" id="shift-hint">點格子可直接設定班別</span>
     <span id="shift-buttons"></span>
     <span class="sel-count" id="sel-count"></span>
   </div>
 
   <!-- 任務分頁的說明列 -->
   <div class="palette" id="task-palette" style="display:none">
+    <button class="chip-btn mode-btn" id="task-select-mode" style="display:none">批次選取</button>
     <span class="hint" id="task-hint">點任一格新增或編輯任務</span>
     <button class="chip-btn" id="task-assign-btn" style="display:none;background:var(--accent);color:#fff">指派任務給已選格子</button>
     <span class="sel-count" id="task-sel-count"></span>
@@ -391,6 +397,10 @@ async function enterApp(session){
   await loadMonth();
 }
 
+/* =================== 批次選取模式 =================== */
+let shiftSelectMode = false;
+let taskSelectMode = false;
+
 /* =================== 分頁切換 =================== */
 document.querySelectorAll(".tab").forEach(t => {
   t.onclick = () => {
@@ -401,17 +411,18 @@ document.querySelectorAll(".tab").forEach(t => {
       currentTab === "shift" ? "flex" : "none";
     document.getElementById("task-palette").style.display =
       currentTab === "task" ? "flex" : "none";
-    // 任務分頁：admin 才顯示「指派」按鈕與框選提示
     if (currentTab === "task") {
       const isAdmin = me.role === "admin";
-      document.getElementById("task-assign-btn").style.display = isAdmin ? "inline-block" : "none";
-      document.getElementById("task-hint").textContent = isAdmin
-        ? "點一格再點同列另一格選整段；同一格點兩次=編輯單格。"
-        : "點自己的格子回報任務狀態。";
+      document.getElementById("task-select-mode").style.display = "inline-block";
+      document.getElementById("task-assign-btn").style.display = "none";
     }
+    // 切分頁時關閉批次模式、清空選取
+    setShiftSelectMode(false);
+    setTaskSelectMode(false);
     clearSelection();
     clearTaskSelection();
     updateSelCount();
+    updateTaskSelCount();
     renderTable();
   };
 });
@@ -542,9 +553,7 @@ function escapeHtml(s){
     ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
 }
 
-/* =================== 勤務：框選互動（點起點、點終點）=================== */
-let shiftAnchor = null;  // 起點格子 {entity, date}
-
+/* =================== 勤務：批次選取模式互動 =================== */
 function bindShiftEvents(){
   const wrap = document.getElementById("table-wrap");
   wrap.querySelectorAll("td.shift-cell").forEach(td => {
@@ -554,41 +563,42 @@ function bindShiftEvents(){
 }
 
 function onShiftCellClick(td){
-  const entity = td.dataset.entity;
-  const date = td.dataset.date;
-
-  if (!shiftAnchor) {
-    // 第一次點：設為起點，只選這一格
-    clearSelection();
-    shiftAnchor = { entity, date };
-    toggleCell(td, true);
+  if (shiftSelectMode) {
+    // 批次選取模式：點格子 = 勾選 / 取消勾選
+    const key = td.dataset.entity + "|" + td.dataset.date;
+    if (selectedCells.has(key)) toggleCell(td, false);
+    else toggleCell(td, true);
     updateSelCount();
-    showStatus("已選起點，點同一列另一格選一整段");
-  } else if (shiftAnchor.entity !== entity) {
-    // 點到不同列：把那一格當成新的起點
-    clearSelection();
-    shiftAnchor = { entity, date };
-    toggleCell(td, true);
-    updateSelCount();
-    showStatus("已選起點，點同一列另一格選一整段");
   } else {
-    // 同一列再點一格：選起點到終點之間整段
-    selectShiftRange(entity, shiftAnchor.date, date);
-    shiftAnchor = null;
+    // 一般模式：點一格 = 直接選這一格（再點班別套用）
+    clearSelection();
+    toggleCell(td, true);
     updateSelCount();
   }
 }
 
-function selectShiftRange(entity, d1, d2){
-  clearSelection();
-  const lo = d1 < d2 ? d1 : d2;
-  const hi = d1 < d2 ? d2 : d1;
-  document.querySelectorAll("td.shift-cell[data-entity='" + entity + "']").forEach(td => {
-    if (td.dataset.edit === "1" && td.dataset.date >= lo && td.dataset.date <= hi) {
-      toggleCell(td, true);
-    }
-  });
+/* 切換批次選取模式 */
+function setShiftSelectMode(on){
+  shiftSelectMode = on;
+  const btn = document.getElementById("shift-select-mode");
+  const hint = document.getElementById("shift-hint");
+  if (on) {
+    btn.classList.add("on");
+    btn.textContent = "選取中（點完成後選班別）";
+    hint.textContent = me.role === "admin"
+      ? "點任意格子勾選，可跨人員、跨日期；選好點班別套用。"
+      : "點自己的格子勾選；選好點班別套用。";
+  } else {
+    btn.classList.remove("on");
+    btn.textContent = "批次選取";
+    hint.textContent = "點格子可直接設定班別";
+    clearSelection();
+    updateSelCount();
+  }
 }
+document.getElementById("shift-select-mode").onclick = () => {
+  setShiftSelectMode(!shiftSelectMode);
+};
 
 function toggleCell(td, on){
   const key = td.dataset.entity + "|" + td.dataset.date;
@@ -597,7 +607,6 @@ function toggleCell(td, on){
 }
 function clearSelection(){
   selectedCells.clear();
-  shiftAnchor = null;
   document.querySelectorAll("td.shift-cell.selected").forEach(td => td.classList.remove("selected"));
 }
 function updateSelCount(){
@@ -629,16 +638,15 @@ async function applyShiftToSelection(code){
     }
   }
   clearSelection(); updateSelCount();
+  if (shiftSelectMode) setShiftSelectMode(false);
   showStatus("已儲存 " + keys.length + " 格");
 }
 
 /* =================== 任務：互動 =================== */
 let taskSelected = new Set();
-let taskAnchor = null;  // 任務框選起點
 
 function clearTaskSelection(){
   taskSelected.clear();
-  taskAnchor = null;
   document.querySelectorAll("td.task-cell.selected").forEach(td => td.classList.remove("selected"));
 }
 function updateTaskSelCount(){
@@ -655,63 +663,54 @@ function toggleTaskCell(td, on){
 
 function bindTaskEvents(){
   const wrap = document.getElementById("table-wrap");
-  const isAdmin = me.role === "admin";
-
   wrap.querySelectorAll("td.task-cell").forEach(td => {
     if (td.dataset.edit !== "1") return;
-
-    if (isAdmin) {
-      // 管理者：點起點、點終點選一段
-      td.onclick = () => onTaskCellClick(td);
-    } else {
-      // 一般使用者：點自己的格子，回報狀態
-      td.onclick = () => openTaskModal(td.dataset.entity, td.dataset.date);
-    }
+    td.onclick = () => onTaskCellClick(td);
   });
 }
 
 function onTaskCellClick(td){
-  const entity = td.dataset.entity;
-  const date = td.dataset.date;
-
-  if (!taskAnchor) {
-    clearTaskSelection();
-    taskAnchor = { entity, date };
-    toggleTaskCell(td, true);
+  if (taskSelectMode) {
+    // 批次選取模式：點格子 = 勾選 / 取消
+    const key = td.dataset.entity + "|" + td.dataset.date;
+    if (taskSelected.has(key)) toggleTaskCell(td, false);
+    else toggleTaskCell(td, true);
     updateTaskSelCount();
-    showStatus("已選起點，再點同一列另一格選一段；或點「指派任務」處理這一格");
-  } else if (taskAnchor.entity !== entity) {
-    clearTaskSelection();
-    taskAnchor = { entity, date };
-    toggleTaskCell(td, true);
-    updateTaskSelCount();
-    showStatus("已選起點，再點同一列另一格選一段");
-  } else if (taskAnchor.date === date) {
-    // 同一格再點一次 = 編輯這一格
-    clearTaskSelection(); updateTaskSelCount();
-    openTaskModal(entity, date);
   } else {
-    // 選起點到終點整段
-    selectTaskRange(entity, taskAnchor.date, date);
-    taskAnchor = null;
-    updateTaskSelCount();
+    // 一般模式：點格子 = 編輯這一格
+    openTaskModal(td.dataset.entity, td.dataset.date);
   }
 }
 
-function selectTaskRange(entity, d1, d2){
-  clearTaskSelection();
-  const lo = d1 < d2 ? d1 : d2;
-  const hi = d1 < d2 ? d2 : d1;
-  document.querySelectorAll("td.task-cell[data-entity='" + entity + "']").forEach(td => {
-    if (td.dataset.edit === "1" && td.dataset.date >= lo && td.dataset.date <= hi) {
-      toggleTaskCell(td, true);
-    }
-  });
+/* 切換任務批次選取模式（僅 admin 用得到） */
+function setTaskSelectMode(on){
+  taskSelectMode = on;
+  const btn = document.getElementById("task-select-mode");
+  const assignBtn = document.getElementById("task-assign-btn");
+  const hint = document.getElementById("task-hint");
+  if (on) {
+    btn.classList.add("on");
+    btn.textContent = "選取中（點完成後指派）";
+    assignBtn.style.display = "inline-block";
+    hint.textContent = "點任意格子勾選，可跨人員、跨日期；選好點「指派任務」。";
+  } else {
+    btn.classList.remove("on");
+    btn.textContent = "批次選取";
+    assignBtn.style.display = "none";
+    hint.textContent = me && me.role === "admin"
+      ? "點格子編輯任務；批次指派請按「批次選取」。"
+      : "點自己的格子回報任務狀態。";
+    clearTaskSelection();
+    updateTaskSelCount();
+  }
 }
+document.getElementById("task-select-mode").onclick = () => {
+  setTaskSelectMode(!taskSelectMode);
+};
 
 /* 管理者：批次指派按鈕 */
 document.getElementById("task-assign-btn").onclick = () => {
-  if (taskSelected.size === 0) { showStatus("請先框選要指派的格子", true); return; }
+  if (taskSelected.size === 0) { showStatus("請先勾選要指派的格子", true); return; }
   openTaskModal(null, null, Array.from(taskSelected));
 };
 
@@ -816,6 +815,7 @@ document.getElementById("tm-save").onclick = async () => {
       paintTaskCell(key, content, status);
     }
     clearTaskSelection(); updateTaskSelCount();
+    if (taskSelectMode) setTaskSelectMode(false);
     showStatus("已指派 " + rows.length + " 格");
   } else {
     // 單格編輯
