@@ -85,7 +85,14 @@
     transition: transform .08s;
   }
   .chip-btn:active { transform: scale(.94); }
-  .palette .sel-count { margin-left: auto; font-size: 12px; color: var(--accent); font-weight: 600; }
+  .palette .sel-count {
+    margin-left: auto; font-size: 13px; font-weight: 700;
+    padding: 4px 12px; border-radius: 999px;
+    color: var(--ink-soft); background: transparent;
+  }
+  .palette .sel-count.active {
+    color: #fff; background: #1d6fe0;
+  }
   /* 表格 */
   .table-wrap { overflow: auto; flex: 1; padding: 14px; }
   table { border-collapse: separate; border-spacing: 0; background: var(--surface); }
@@ -108,16 +115,33 @@
   td.shift-cell {
     height: 38px; min-width: 44px; cursor: pointer;
     user-select: none; -webkit-user-select: none; position: relative; font-weight: 600;
+    transition: box-shadow .1s, transform .1s;
   }
   td.shift-cell.readonly { cursor: default; color: var(--ink-soft); font-weight: 400; }
+  /* 框選中：醒目高亮 —— 粗外框 + 內層藍綠罩 + 輕微放大 */
+  td.shift-cell.selected, td.task-cell.selected {
+    box-shadow: inset 0 0 0 3px #1d6fe0, 0 0 0 1px #1d6fe0;
+    z-index: 4;
+  }
+  td.shift-cell.selected::before, td.task-cell.selected::before {
+    content: ""; position: absolute; inset: 0;
+    background: rgba(29,111,224,.22);
+    pointer-events: none;
+    animation: selPulse .18s ease-out;
+  }
   td.shift-cell.selected::after {
-    content: ""; position: absolute; inset: 2px;
-    border: 2px solid var(--sel); border-radius: 4px; pointer-events: none;
+    content: "✓"; position: absolute; top: 1px; right: 3px;
+    font-size: 10px; color: #1d6fe0; font-weight: 700; pointer-events: none;
+  }
+  @keyframes selPulse {
+    from { background: rgba(29,111,224,.5); }
+    to   { background: rgba(29,111,224,.22); }
   }
   /* 任務格子 */
   td.task-cell {
     min-width: 96px; height: 46px; cursor: pointer; position: relative;
     padding: 3px 5px; vertical-align: middle;
+    transition: box-shadow .1s;
   }
   td.task-cell.readonly { cursor: default; }
   td.task-cell .t-content {
@@ -530,13 +554,14 @@ function bindShiftEvents(){
   });
   wrap.addEventListener("touchmove", (e) => {
     if (!isDragging) return;
+    e.preventDefault();   // 框選時阻止頁面捲動
     const t = e.touches[0];
     const el = document.elementFromPoint(t.clientX, t.clientY);
     if (el && el.classList.contains("shift-cell") &&
         el.dataset.edit === "1" && el.dataset.entity === dragRow) {
       toggleCell(el, true); updateSelCount();
     }
-  }, { passive: true });
+  }, { passive: false });
 }
 document.addEventListener("mouseup", () => { isDragging = false; });
 document.addEventListener("touchend", () => { isDragging = false; });
@@ -552,7 +577,9 @@ function clearSelection(){
 }
 function updateSelCount(){
   const n = selectedCells.size;
-  document.getElementById("sel-count").textContent = n > 0 ? "已選 " + n + " 格" : "";
+  const el = document.getElementById("sel-count");
+  el.textContent = n > 0 ? "已選 " + n + " 格 — 點上方班別套用" : "";
+  el.className = "sel-count" + (n > 0 ? " active" : "");
 }
 
 async function applyShiftToSelection(code){
@@ -590,7 +617,9 @@ function clearTaskSelection(){
 }
 function updateTaskSelCount(){
   const n = taskSelected.size;
-  document.getElementById("task-sel-count").textContent = n > 0 ? "已選 " + n + " 格" : "";
+  const el = document.getElementById("task-sel-count");
+  el.textContent = n > 0 ? "已選 " + n + " 格 — 點「指派任務」按鈕" : "";
+  el.className = "sel-count" + (n > 0 ? " active" : "");
 }
 function toggleTaskCell(td, on){
   const key = td.dataset.entity + "|" + td.dataset.date;
@@ -632,13 +661,14 @@ function bindTaskEvents(){
   if (isAdmin) {
     wrap.addEventListener("touchmove", (e) => {
       if (!taskDragging) return;
+      e.preventDefault();   // 框選時阻止頁面捲動
       const t = e.touches[0];
       const el = document.elementFromPoint(t.clientX, t.clientY);
       if (el && el.classList.contains("task-cell") &&
           el.dataset.edit === "1" && el.dataset.entity === taskDragRow) {
         toggleTaskCell(el, true); updateTaskSelCount();
       }
-    }, { passive: true });
+    }, { passive: false });
   }
 }
 
