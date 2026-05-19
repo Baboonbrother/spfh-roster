@@ -3,64 +3,48 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>月排班表</title>
+<title>勤務與任務系統</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
-    --bg: #eceae3;
-    --surface: #ffffff;
-    --ink: #20201d;
-    --ink-soft: #6f6e67;
-    --line: #d6d4ca;
-    --accent: #2f5d50;
-    --accent-dark: #244a40;
-    --accent-soft: #e3ede9;
-    --mine: #fff6e3;
-    --mine-line: #d9ad4e;
-    --sel: #2f5d50;
+    --bg: #eceae3; --surface: #ffffff; --ink: #20201d; --ink-soft: #6f6e67;
+    --line: #d6d4ca; --accent: #2f5d50; --accent-dark: #244a40;
+    --accent-soft: #e3ede9; --mine: #fff6e3; --mine-line: #d9ad4e; --sel: #2f5d50;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
   body {
     font-family: -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
-    background: var(--bg);
-    color: var(--ink);
-    line-height: 1.5;
-    -webkit-font-smoothing: antialiased;
-    -webkit-tap-highlight-color: transparent;
+    background: var(--bg); color: var(--ink); line-height: 1.5;
+    -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent;
   }
-  /* ---------- 登入畫面 ---------- */
+  /* 登入 */
   #login-view {
-    min-height: 100vh;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    gap: 22px; padding: 24px; text-align: center;
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 22px;
+    padding: 24px; text-align: center;
   }
   #login-view .mark {
-    width: 52px; height: 52px; border-radius: 13px;
-    background: var(--accent); color: #fff;
-    display: flex; align-items: center; justify-content: center;
+    width: 52px; height: 52px; border-radius: 13px; background: var(--accent);
+    color: #fff; display: flex; align-items: center; justify-content: center;
     font-size: 24px; font-weight: 700;
   }
   #login-view .brand { font-size: 12px; letter-spacing: 3px; color: var(--ink-soft); }
-  #login-view h1 { font-size: 27px; font-weight: 700; letter-spacing: 2px; }
+  #login-view h1 { font-size: 26px; font-weight: 700; letter-spacing: 2px; }
   #login-view p { color: var(--ink-soft); font-size: 14px; }
   .btn-google {
-    display: inline-flex; align-items: center; gap: 9px;
-    background: var(--accent); color: #fff; border: none;
-    padding: 13px 28px; border-radius: 9px; font-size: 15px;
-    cursor: pointer; transition: opacity .15s; font-family: inherit;
+    display: inline-flex; align-items: center; gap: 9px; background: var(--accent);
+    color: #fff; border: none; padding: 13px 28px; border-radius: 9px;
+    font-size: 15px; cursor: pointer; font-family: inherit;
   }
   .btn-google:hover { opacity: .9; }
   #login-hint { color: #8a3b2e; font-size: 13px; max-width: 320px; }
-  /* ---------- 主畫面 ---------- */
+  /* 主畫面 */
   #app-view { display: none; height: 100vh; flex-direction: column; }
   header {
-    background: var(--surface);
-    border-bottom: 1px solid var(--line);
-    padding: 11px 18px;
-    display: flex; align-items: center; justify-content: space-between;
-    flex-wrap: wrap; gap: 10px; flex-shrink: 0;
+    background: var(--surface); border-bottom: 1px solid var(--line);
+    padding: 10px 18px; display: flex; align-items: center;
+    justify-content: space-between; flex-wrap: wrap; gap: 10px; flex-shrink: 0;
   }
   header .title { font-size: 16px; font-weight: 700; letter-spacing: 1px; }
   header .who { font-size: 12px; color: var(--ink-soft); margin-top: 1px; }
@@ -69,103 +53,144 @@
     padding: 1px 7px; border-radius: 4px; margin-left: 5px; font-weight: 600;
   }
   .controls { display: flex; align-items: center; gap: 6px; }
-  .controls button, .controls select {
-    font-family: inherit; font-size: 13px;
-    border: 1px solid var(--line); background: var(--surface);
-    color: var(--ink); padding: 6px 11px; border-radius: 7px; cursor: pointer;
+  .controls button {
+    font-family: inherit; font-size: 13px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--ink); padding: 6px 11px;
+    border-radius: 7px; cursor: pointer;
   }
   .controls button:hover { background: var(--bg); }
-  .controls .month-label { font-weight: 700; min-width: 96px; text-align: center; border: none; }
+  .controls .month-label { font-weight: 700; min-width: 96px; text-align: center; }
   .btn-logout { color: var(--ink-soft); }
-  /* ---------- 班別工具列 ---------- */
-  #palette {
-    background: var(--surface);
-    border-bottom: 1px solid var(--line);
-    padding: 9px 18px;
-    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-    flex-shrink: 0;
+  /* 分頁切換 */
+  #tabs {
+    background: var(--surface); border-bottom: 1px solid var(--line);
+    padding: 0 14px; display: flex; gap: 4px; flex-shrink: 0;
   }
-  #palette .hint { font-size: 12px; color: var(--ink-soft); margin-right: 4px; }
-  .shift-btn {
-    border: 1px solid var(--line);
-    padding: 6px 14px; border-radius: 7px;
-    font-size: 13px; font-family: inherit; cursor: pointer;
-    font-weight: 600; transition: transform .08s;
+  .tab {
+    border: none; background: none; font-family: inherit; font-size: 14px;
+    padding: 11px 18px; cursor: pointer; color: var(--ink-soft);
+    border-bottom: 3px solid transparent; font-weight: 600;
   }
-  .shift-btn:active { transform: scale(.94); }
-  #palette .sel-count {
-    margin-left: auto; font-size: 12px; color: var(--accent);
-    font-weight: 600;
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  /* 工具列 */
+  .palette {
+    background: var(--surface); border-bottom: 1px solid var(--line);
+    padding: 9px 18px; display: flex; align-items: center; gap: 8px;
+    flex-wrap: wrap; flex-shrink: 0;
   }
-  /* ---------- 表格 ---------- */
+  .palette .hint { font-size: 12px; color: var(--ink-soft); margin-right: 4px; }
+  .chip-btn {
+    border: 1px solid var(--line); padding: 6px 14px; border-radius: 7px;
+    font-size: 13px; font-family: inherit; cursor: pointer; font-weight: 600;
+    transition: transform .08s;
+  }
+  .chip-btn:active { transform: scale(.94); }
+  .palette .sel-count { margin-left: auto; font-size: 12px; color: var(--accent); font-weight: 600; }
+  /* 表格 */
   .table-wrap { overflow: auto; flex: 1; padding: 14px; }
   table { border-collapse: separate; border-spacing: 0; background: var(--surface); }
   th, td {
-    border-right: 1px solid var(--line);
-    border-bottom: 1px solid var(--line);
+    border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
     text-align: center; font-size: 13px; white-space: nowrap;
   }
   thead th {
-    background: var(--accent); color: #fff;
-    padding: 7px 5px; position: sticky; top: 0; z-index: 10;
-    font-weight: 600; border-right-color: #3a6d5e;
+    background: var(--accent); color: #fff; padding: 7px 5px;
+    position: sticky; top: 0; z-index: 10; font-weight: 600; border-right-color: #3a6d5e;
   }
-  thead th.col-name {
-    left: 0; z-index: 15; min-width: 124px; border-right-color: #3a6d5e;
-  }
+  thead th.col-name { left: 0; z-index: 15; min-width: 124px; border-right-color: #3a6d5e; }
   th.weekend { background: var(--accent-dark); }
   tbody td.cell-name {
-    position: sticky; left: 0; background: var(--surface);
-    text-align: left; padding: 7px 11px; font-weight: 600; z-index: 5;
-    min-width: 124px;
+    position: sticky; left: 0; background: var(--surface); text-align: left;
+    padding: 7px 11px; font-weight: 600; z-index: 5; min-width: 124px;
   }
-  tbody td.cell-name .bno {
-    display: block; font-size: 11px; color: var(--ink-soft); font-weight: 400;
-  }
-  tbody tr.is-mine td.cell-name {
-    background: var(--mine); border-left: 3px solid var(--mine-line);
-  }
+  tbody td.cell-name .bno { display: block; font-size: 11px; color: var(--ink-soft); font-weight: 400; }
+  tbody tr.is-mine td.cell-name { background: var(--mine); border-left: 3px solid var(--mine-line); }
   td.shift-cell {
     height: 38px; min-width: 44px; cursor: pointer;
-    user-select: none; -webkit-user-select: none;
-    position: relative; font-weight: 600;
+    user-select: none; -webkit-user-select: none; position: relative; font-weight: 600;
   }
   td.shift-cell.readonly { cursor: default; color: var(--ink-soft); font-weight: 400; }
-  td.shift-cell.weekend-col { box-shadow: inset 0 0 0 99px rgba(0,0,0,.025); }
   td.shift-cell.selected::after {
     content: ""; position: absolute; inset: 2px;
     border: 2px solid var(--sel); border-radius: 4px; pointer-events: none;
   }
-  /* ---------- 狀態列 ---------- */
+  /* 任務格子 */
+  td.task-cell {
+    min-width: 96px; height: 46px; cursor: pointer; position: relative;
+    padding: 3px 5px; vertical-align: middle;
+  }
+  td.task-cell.readonly { cursor: default; }
+  td.task-cell .t-content {
+    font-size: 11px; font-weight: 600; line-height: 1.25;
+    white-space: normal; word-break: break-word;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  td.task-cell .t-status {
+    font-size: 10px; padding: 0 5px; border-radius: 3px;
+    display: inline-block; margin-top: 2px; font-weight: 600;
+  }
+  /* 狀態列 */
   #status-bar {
-    position: fixed; bottom: 18px; left: 50%;
-    transform: translateX(-50%);
-    background: var(--ink); color: #fff;
-    padding: 9px 18px; border-radius: 999px; font-size: 13px;
-    opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 50;
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+    background: var(--ink); color: #fff; padding: 9px 18px;
+    border-radius: 999px; font-size: 13px; opacity: 0;
+    transition: opacity .2s; pointer-events: none; z-index: 50;
   }
   #status-bar.show { opacity: 1; }
   #status-bar.error { background: #8a3b2e; }
   .loading { padding: 50px; text-align: center; color: var(--ink-soft); }
+  /* 任務編輯彈窗 */
+  #task-modal {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4);
+    z-index: 60; align-items: center; justify-content: center; padding: 20px;
+  }
+  #task-modal .box {
+    background: var(--surface); border-radius: 12px; padding: 20px;
+    width: 100%; max-width: 380px;
+  }
+  #task-modal h3 { font-size: 16px; margin-bottom: 4px; }
+  #task-modal .sub { font-size: 12px; color: var(--ink-soft); margin-bottom: 14px; }
+  #task-modal label { font-size: 12px; color: var(--ink-soft); display: block; margin-bottom: 4px; }
+  #task-modal textarea {
+    width: 100%; font-family: inherit; font-size: 14px; padding: 8px;
+    border: 1px solid var(--line); border-radius: 7px; resize: vertical;
+    min-height: 64px; margin-bottom: 12px;
+  }
+  #task-modal .status-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+  #task-modal .status-opt {
+    border: 1px solid var(--line); padding: 6px 12px; border-radius: 7px;
+    font-size: 13px; cursor: pointer; font-family: inherit; font-weight: 600;
+  }
+  #task-modal .status-opt.picked { outline: 2px solid var(--accent); }
+  #task-modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  #task-modal .modal-actions button {
+    font-family: inherit; font-size: 14px; padding: 8px 16px;
+    border-radius: 7px; cursor: pointer; border: 1px solid var(--line);
+    background: var(--surface);
+  }
+  #task-modal .modal-actions .primary {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+  }
 </style>
 </head>
 <body>
 
-<!-- ============ 登入畫面 ============ -->
+<!-- 登入 -->
 <div id="login-view">
-  <div class="mark">排</div>
-  <div class="brand">SPFH · 排班系統</div>
-  <h1>月排班表</h1>
+  <div class="mark">勤</div>
+  <div class="brand">SPFH · 勤務與任務系統</div>
+  <h1>勤務與任務系統</h1>
   <p>請使用您的 Google 帳號登入</p>
   <button class="btn-google" id="btn-login">使用 Google 登入</button>
   <p id="login-hint"></p>
 </div>
 
-<!-- ============ 主畫面 ============ -->
+<!-- 主畫面 -->
 <div id="app-view">
   <header>
     <div>
-      <div class="title">月排班表</div>
+      <div class="title">勤務與任務系統</div>
       <div class="who" id="who"></div>
     </div>
     <div class="controls">
@@ -177,10 +202,21 @@
     </div>
   </header>
 
-  <div id="palette">
+  <div id="tabs">
+    <button class="tab active" data-tab="shift">勤務預定表</button>
+    <button class="tab" data-tab="task">任務安排表</button>
+  </div>
+
+  <!-- 勤務分頁的班別工具列 -->
+  <div class="palette" id="shift-palette">
     <span class="hint">框選格子後，點班別套用：</span>
     <span id="shift-buttons"></span>
     <span class="sel-count" id="sel-count"></span>
+  </div>
+
+  <!-- 任務分頁的說明列 -->
+  <div class="palette" id="task-palette" style="display:none">
+    <span class="hint" id="task-hint">點任一格新增或編輯任務</span>
   </div>
 
   <div class="table-wrap" id="table-wrap">
@@ -188,58 +224,69 @@
   </div>
 </div>
 
+<!-- 任務編輯彈窗 -->
+<div id="task-modal">
+  <div class="box">
+    <h3 id="tm-title">編輯任務</h3>
+    <div class="sub" id="tm-sub"></div>
+    <label>任務內容</label>
+    <textarea id="tm-content" placeholder="輸入任務內容…"></textarea>
+    <label>狀態</label>
+    <div class="status-row" id="tm-status"></div>
+    <div class="modal-actions">
+      <button id="tm-cancel">取消</button>
+      <button class="primary" id="tm-save">儲存</button>
+    </div>
+  </div>
+</div>
+
 <div id="status-bar"></div>
 
 <script>
-/* =======================================================
-   設定區
-   ======================================================= */
+/* =================== 設定 =================== */
 const SUPABASE_URL = "https://rpwuhzrwekziwhemfszj.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_a5AZ3zUsrdrrhEer8YTsFA_RU6s4A8x";
-
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-/* ---------- 全域狀態 ---------- */
-let me = null;
-let roster = [];
-let shiftTypes = [];
-let shiftMap = {};
+/* =================== 狀態 =================== */
+let me = null, roster = [];
+let shiftTypes = [], shiftMap = {};
+let taskStatuses = [], taskStatusMap = {};
 let viewYear, viewMonth;
-let currentLatest = {};
-let selectedCells = new Set();
+let currentTab = "shift";
+let shiftLatest = {};          // 勤務：key -> value
+let taskLatest = {};           // 任務：key -> {content, status}
+let selectedCells = new Set(); // 勤務框選
+let modalTarget = null;        // 任務彈窗目前編輯的格子
 
-/* ---------- 工具 ---------- */
-function showStatus(msg, isError) {
-  const bar = document.getElementById("status-bar");
-  bar.textContent = msg;
-  bar.className = "show" + (isError ? " error" : "");
-  clearTimeout(bar._t);
-  bar._t = setTimeout(() => { bar.className = ""; }, 2600);
+/* =================== 工具 =================== */
+function showStatus(msg, isErr) {
+  const b = document.getElementById("status-bar");
+  b.textContent = msg; b.className = "show" + (isErr ? " error" : "");
+  clearTimeout(b._t); b._t = setTimeout(() => { b.className = ""; }, 2600);
 }
-function pad(n) { return String(n).padStart(2, "0"); }
-function daysInMonth(y, m) { return new Date(y, m, 0).getDate(); }
-function dateStr(y, m, d) { return `${y}-${pad(m)}-${pad(d)}`; }
-function textColorFor(hex) {
-  const h = hex.replace("#", "");
+function pad(n){ return String(n).padStart(2,"0"); }
+function daysInMonth(y,m){ return new Date(y,m,0).getDate(); }
+function dateStr(y,m,d){ return `${y}-${pad(m)}-${pad(d)}`; }
+function textColorFor(hex){
+  const h = hex.replace("#","");
   if (h.length < 6) return "#20201d";
-  const r = parseInt(h.substr(0,2),16), g = parseInt(h.substr(2,2),16), b = parseInt(h.substr(4,2),16);
-  return (r*299 + g*587 + b*114) / 1000 > 150 ? "#20201d" : "#ffffff";
+  const r=parseInt(h.substr(0,2),16),g=parseInt(h.substr(2,2),16),b=parseInt(h.substr(4,2),16);
+  return (r*299+g*587+b*114)/1000 > 150 ? "#20201d" : "#ffffff";
 }
 
-/* ---------- 登入 ---------- */
+/* =================== 登入 =================== */
 document.getElementById("btn-login").onclick = async () => {
   const { error } = await sb.auth.signInWithOAuth({
-    provider: "google",
-    options: { redirectTo: window.location.href }
+    provider: "google", options: { redirectTo: window.location.href }
   });
   if (error) document.getElementById("login-hint").textContent = "登入失敗：" + error.message;
 };
 document.getElementById("btn-logout").onclick = async () => {
-  await sb.auth.signOut();
-  location.reload();
+  await sb.auth.signOut(); location.reload();
 };
 
-(async function init() {
+(async function init(){
   const { data: { session } } = await sb.auth.getSession();
   if (session) await enterApp(session);
   sb.auth.onAuthStateChange(async (_e, session) => {
@@ -249,100 +296,118 @@ document.getElementById("btn-logout").onclick = async () => {
   });
 })();
 
-/* ---------- 進入主畫面 ---------- */
-async function enterApp(session) {
+/* =================== 進入主畫面 =================== */
+async function enterApp(session){
   const email = session.user.email;
-
-  const { data, error } = await sb
-    .from("roster")
-    .select("id, badge_no, name, email, role")
-    .eq("email", email)
-    .maybeSingle();
-
+  const { data, error } = await sb.from("roster")
+    .select("id, badge_no, name, email, role").eq("email", email).maybeSingle();
   if (error) {
     document.getElementById("login-hint").textContent = "讀取人員資料失敗：" + error.message;
     return;
   }
   if (!data) {
     document.getElementById("login-hint").textContent =
-      "您的帳號（" + email + "）不在排班名單中，請聯絡管理者。";
+      "您的帳號（" + email + "）不在名單中，請聯絡管理者。";
     await sb.auth.signOut();
     return;
   }
   me = data;
-
   document.getElementById("login-view").style.display = "none";
   document.getElementById("app-view").style.display = "flex";
   document.getElementById("who").innerHTML =
     me.name + "（" + me.badge_no + "）<span class='tag'>" +
     (me.role === "admin" ? "管理者" : "一般人員") + "</span>";
 
-  // 班別類型：動態載入，不寫死
-  const st = await sb.from("shift_type")
-    .select("code, label, color, sort_order")
-    .eq("active", true)
-    .order("sort_order");
+  // 班別
+  const st = await sb.from("shift_type").select("code,label,color,sort_order")
+    .eq("active", true).order("sort_order");
   shiftTypes = st.data || [];
-  shiftMap = {};
-  shiftTypes.forEach(s => shiftMap[s.code] = s);
-  renderPalette();
+  shiftMap = {}; shiftTypes.forEach(s => shiftMap[s.code] = s);
+  renderShiftPalette();
+
+  // 任務狀態
+  const ts = await sb.from("task_status").select("code,label,color,sort_order")
+    .eq("active", true).order("sort_order");
+  taskStatuses = ts.data || [];
+  taskStatusMap = {}; taskStatuses.forEach(s => taskStatusMap[s.code] = s);
 
   // 人員
-  const r = await sb.from("roster")
-    .select("id, badge_no, name")
+  const r = await sb.from("roster").select("id,badge_no,name")
     .eq("active", true).order("badge_no");
   roster = r.data || [];
 
   const now = new Date();
-  viewYear = now.getFullYear();
-  viewMonth = now.getMonth() + 1;
+  viewYear = now.getFullYear(); viewMonth = now.getMonth() + 1;
   await loadMonth();
 }
 
-/* ---------- 班別工具列 ---------- */
-function renderPalette() {
+/* =================== 分頁切換 =================== */
+document.querySelectorAll(".tab").forEach(t => {
+  t.onclick = () => {
+    currentTab = t.dataset.tab;
+    document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+    t.classList.add("active");
+    document.getElementById("shift-palette").style.display =
+      currentTab === "shift" ? "flex" : "none";
+    document.getElementById("task-palette").style.display =
+      currentTab === "task" ? "flex" : "none";
+    renderTable();
+  };
+});
+
+/* =================== 班別工具列 =================== */
+function renderShiftPalette(){
   const box = document.getElementById("shift-buttons");
   box.innerHTML = "";
   for (const s of shiftTypes) {
     const btn = document.createElement("button");
-    btn.className = "shift-btn";
-    btn.textContent = s.label;
-    btn.style.background = s.color;
-    btn.style.color = textColorFor(s.color);
+    btn.className = "chip-btn"; btn.textContent = s.label;
+    btn.style.background = s.color; btn.style.color = textColorFor(s.color);
     btn.onclick = () => applyShiftToSelection(s.code);
     box.appendChild(btn);
   }
 }
 
-/* ---------- 載入某月 ---------- */
-async function loadMonth() {
+/* =================== 載入當月（兩個分頁的資料一起載） =================== */
+async function loadMonth(){
   document.getElementById("month-label").textContent = viewYear + " 年 " + viewMonth + " 月";
   const wrap = document.getElementById("table-wrap");
   wrap.innerHTML = "<div class='loading'>載入中…</div>";
-  selectedCells.clear();
-  updateSelCount();
+  selectedCells.clear(); updateSelCount();
 
   const nDays = daysInMonth(viewYear, viewMonth);
   const first = dateStr(viewYear, viewMonth, 1);
   const last = dateStr(viewYear, viewMonth, nDays);
 
-  const { data, error } = await sb.from("shift_log")
-    .select("entity_id, work_date, value, created_at")
+  // 勤務
+  const sres = await sb.from("shift_log")
+    .select("entity_id,work_date,value,created_at")
     .gte("work_date", first).lte("work_date", last)
     .order("created_at", { ascending: true });
+  shiftLatest = {};
+  if (!sres.error) for (const row of sres.data)
+    shiftLatest[row.entity_id + "|" + row.work_date] = row.value;
 
-  if (error) {
-    wrap.innerHTML = "<div class='loading'>載入失敗：" + error.message + "</div>";
+  // 任務
+  const tres = await sb.from("task_log")
+    .select("entity_id,work_date,content,status,created_at")
+    .gte("work_date", first).lte("work_date", last)
+    .order("created_at", { ascending: true });
+  taskLatest = {};
+  if (!tres.error) for (const row of tres.data)
+    taskLatest[row.entity_id + "|" + row.work_date] = { content: row.content, status: row.status };
+
+  if (sres.error) {
+    wrap.innerHTML = "<div class='loading'>勤務資料載入失敗：" + sres.error.message + "</div>";
     return;
   }
-  currentLatest = {};
-  for (const row of data) currentLatest[row.entity_id + "|" + row.work_date] = row.value;
-  renderTable(nDays);
+  renderTable();
 }
 
-/* ---------- 繪製表格 ---------- */
-function renderTable(nDays) {
+/* =================== 繪製表格（依目前分頁） =================== */
+function renderTable(){
   const wrap = document.getElementById("table-wrap");
+  const nDays = daysInMonth(viewYear, viewMonth);
   const weekNames = ["日","一","二","三","四","五","六"];
 
   let html = "<table><thead><tr><th class='col-name'>番號 / 姓名</th>";
@@ -362,123 +427,201 @@ function renderTable(nDays) {
             "<span class='bno'>" + person.badge_no + "</span></td>";
     for (let d = 1; d <= nDays; d++) {
       const ds = dateStr(viewYear, viewMonth, d);
-      const val = currentLatest[person.id + "|" + ds] || "未排";
-      const wd = new Date(viewYear, viewMonth - 1, d).getDay();
-      const wkCls = (wd === 0 || wd === 6) ? " weekend-col" : "";
-      html += renderCellHtml(person.id, ds, val, canEdit, wkCls);
+      html += (currentTab === "shift")
+        ? shiftCellHtml(person.id, ds, canEdit)
+        : taskCellHtml(person.id, ds, canEdit);
     }
     html += "</tr>";
   }
   html += "</tbody></table>";
   wrap.innerHTML = html;
-  bindCellEvents();
+
+  if (currentTab === "shift") bindShiftEvents();
+  else bindTaskEvents();
 }
 
-function renderCellHtml(entityId, ds, val, canEdit, wkCls) {
+/* ---------- 勤務格子 ---------- */
+function shiftCellHtml(entityId, ds, canEdit){
+  const val = shiftLatest[entityId + "|" + ds] || "未排";
   const st = shiftMap[val];
   const bg = st ? st.color : "#ffffff";
-  const label = (val === "未排") ? "" : (st ? st.label.replace(/班$/, "") : val);
-  const cls = "shift-cell" + (canEdit ? "" : " readonly") + wkCls;
-  return "<td class='" + cls + "' data-entity='" + entityId +
-         "' data-date='" + ds + "' data-edit='" + (canEdit ? 1 : 0) +
-         "' style='background:" + bg + ";color:" + textColorFor(bg) + "'>" +
-         label + "</td>";
+  const label = (val === "未排") ? "" : (st ? st.label.replace(/班$/,"") : val);
+  return "<td class='shift-cell" + (canEdit ? "" : " readonly") +
+         "' data-entity='" + entityId + "' data-date='" + ds +
+         "' data-edit='" + (canEdit ? 1 : 0) + "' style='background:" + bg +
+         ";color:" + textColorFor(bg) + "'>" + label + "</td>";
 }
 
-/* ---------- 框選互動 ---------- */
-let isDragging = false;
-let dragRow = null;
+/* ---------- 任務格子 ---------- */
+function taskCellHtml(entityId, ds, canEdit){
+  const t = taskLatest[entityId + "|" + ds];
+  let inner = "";
+  let bg = "#ffffff";
+  if (t && (t.content || t.status)) {
+    const stt = taskStatusMap[t.status];
+    const stColor = stt ? stt.color : "#e6e3d4";
+    bg = "#fbfbf8";
+    inner = "<div class='t-content'>" + escapeHtml(t.content || "") + "</div>";
+    if (t.status) {
+      inner += "<span class='t-status' style='background:" + stColor +
+               ";color:" + textColorFor(stColor) + "'>" +
+               (stt ? stt.label : t.status) + "</span>";
+    }
+  }
+  return "<td class='task-cell" + (canEdit ? "" : " readonly") +
+         "' data-entity='" + entityId + "' data-date='" + ds +
+         "' data-edit='" + (canEdit ? 1 : 0) + "' style='background:" + bg + "'>" +
+         inner + "</td>";
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"]/g, c =>
+    ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+}
 
-function bindCellEvents() {
+/* =================== 勤務：框選互動 =================== */
+let isDragging = false, dragRow = null;
+function bindShiftEvents(){
   const wrap = document.getElementById("table-wrap");
   wrap.querySelectorAll("td.shift-cell").forEach(td => {
     if (td.dataset.edit !== "1") return;
-
     td.addEventListener("mousedown", (e) => {
-      e.preventDefault();
-      isDragging = true;
-      dragRow = td.dataset.entity;
+      e.preventDefault(); isDragging = true; dragRow = td.dataset.entity;
       if (!e.shiftKey && !e.metaKey && !e.ctrlKey) clearSelection();
-      toggleCell(td, true);
-      updateSelCount();
+      toggleCell(td, true); updateSelCount();
     });
     td.addEventListener("mouseenter", () => {
-      if (isDragging && td.dataset.entity === dragRow) {
-        toggleCell(td, true);
-        updateSelCount();
-      }
+      if (isDragging && td.dataset.entity === dragRow) { toggleCell(td, true); updateSelCount(); }
     });
     td.addEventListener("touchstart", () => {
-      isDragging = true;
-      dragRow = td.dataset.entity;
-      clearSelection();
-      toggleCell(td, true);
-      updateSelCount();
+      isDragging = true; dragRow = td.dataset.entity;
+      clearSelection(); toggleCell(td, true); updateSelCount();
     }, { passive: true });
   });
-
   wrap.addEventListener("touchmove", (e) => {
     if (!isDragging) return;
     const t = e.touches[0];
     const el = document.elementFromPoint(t.clientX, t.clientY);
     if (el && el.classList.contains("shift-cell") &&
         el.dataset.edit === "1" && el.dataset.entity === dragRow) {
-      toggleCell(el, true);
-      updateSelCount();
+      toggleCell(el, true); updateSelCount();
     }
   }, { passive: true });
 }
 document.addEventListener("mouseup", () => { isDragging = false; });
 document.addEventListener("touchend", () => { isDragging = false; });
 
-function toggleCell(td, on) {
+function toggleCell(td, on){
   const key = td.dataset.entity + "|" + td.dataset.date;
   if (on) { selectedCells.add(key); td.classList.add("selected"); }
   else { selectedCells.delete(key); td.classList.remove("selected"); }
 }
-function clearSelection() {
+function clearSelection(){
   selectedCells.clear();
-  document.querySelectorAll("td.shift-cell.selected")
-    .forEach(td => td.classList.remove("selected"));
+  document.querySelectorAll("td.shift-cell.selected").forEach(td => td.classList.remove("selected"));
 }
-function updateSelCount() {
+function updateSelCount(){
   const n = selectedCells.size;
   document.getElementById("sel-count").textContent = n > 0 ? "已選 " + n + " 格" : "";
 }
 
-/* ---------- 套用班別到框選的格子 ---------- */
-async function applyShiftToSelection(code) {
-  if (selectedCells.size === 0) {
-    showStatus("請先框選要設定的格子", true);
-    return;
-  }
+async function applyShiftToSelection(code){
+  if (selectedCells.size === 0) { showStatus("請先框選要設定的格子", true); return; }
   const rows = [];
   for (const key of selectedCells) {
-    const [entityId, workDate] = key.split("|");
-    rows.push({ entity_id: entityId, work_date: workDate, value: code, created_by: me.email });
+    const [entity_id, work_date] = key.split("|");
+    rows.push({ entity_id, work_date, value: code, created_by: me.email });
   }
   const { error } = await sb.from("shift_log").insert(rows);
   if (error) { showStatus("儲存失敗：" + error.message, true); return; }
-
   const keys = Array.from(selectedCells);
   for (const key of keys) {
-    currentLatest[key] = code;
-    const [entityId, ds] = key.split("|");
+    shiftLatest[key] = code;
+    const [eid, ds] = key.split("|");
     const td = document.querySelector(
-      "td.shift-cell[data-entity='" + entityId + "'][data-date='" + ds + "']");
+      "td.shift-cell[data-entity='" + eid + "'][data-date='" + ds + "']");
     if (td) {
       const st = shiftMap[code];
-      td.style.background = st.color;
-      td.style.color = textColorFor(st.color);
-      td.textContent = (code === "未排") ? "" : st.label.replace(/班$/, "");
+      td.style.background = st.color; td.style.color = textColorFor(st.color);
+      td.textContent = (code === "未排") ? "" : st.label.replace(/班$/,"");
     }
   }
-  clearSelection();
-  updateSelCount();
+  clearSelection(); updateSelCount();
   showStatus("已儲存 " + keys.length + " 格");
 }
 
-/* ---------- 月份切換 ---------- */
+/* =================== 任務：點格子開彈窗 =================== */
+function bindTaskEvents(){
+  const wrap = document.getElementById("table-wrap");
+  wrap.querySelectorAll("td.task-cell").forEach(td => {
+    if (td.dataset.edit !== "1") return;
+    td.onclick = () => openTaskModal(td.dataset.entity, td.dataset.date);
+  });
+}
+
+function openTaskModal(entityId, ds){
+  modalTarget = { entityId, ds };
+  const person = roster.find(p => p.id === entityId);
+  const t = taskLatest[entityId + "|" + ds] || { content: "", status: "待辦" };
+
+  document.getElementById("tm-title").textContent = "任務 — " + (person ? person.name : "");
+  document.getElementById("tm-sub").textContent = ds;
+  document.getElementById("tm-content").value = t.content || "";
+
+  const statusBox = document.getElementById("tm-status");
+  statusBox.innerHTML = "";
+  let picked = t.status || "待辦";
+  for (const s of taskStatuses) {
+    const opt = document.createElement("div");
+    opt.className = "status-opt" + (s.code === picked ? " picked" : "");
+    opt.textContent = s.label;
+    opt.style.background = s.color; opt.style.color = textColorFor(s.color);
+    opt.onclick = () => {
+      picked = s.code;
+      statusBox.querySelectorAll(".status-opt").forEach(o => o.classList.remove("picked"));
+      opt.classList.add("picked");
+    };
+    opt.dataset.code = s.code;
+    statusBox.appendChild(opt);
+  }
+  statusBox._getPicked = () => picked;
+  document.getElementById("task-modal").style.display = "flex";
+}
+
+document.getElementById("tm-cancel").onclick = () => {
+  document.getElementById("task-modal").style.display = "none";
+  modalTarget = null;
+};
+document.getElementById("tm-save").onclick = async () => {
+  if (!modalTarget) return;
+  const content = document.getElementById("tm-content").value.trim();
+  const status = document.getElementById("tm-status")._getPicked();
+  const { entityId, ds } = modalTarget;
+
+  const { error } = await sb.from("task_log").insert({
+    entity_id: entityId, work_date: ds,
+    content: content, status: status, created_by: me.email
+  });
+  if (error) { showStatus("儲存失敗：" + error.message, true); return; }
+
+  taskLatest[entityId + "|" + ds] = { content, status };
+  const td = document.querySelector(
+    "td.task-cell[data-entity='" + entityId + "'][data-date='" + ds + "']");
+  if (td) {
+    const stt = taskStatusMap[status];
+    const stColor = stt ? stt.color : "#e6e3d4";
+    td.style.background = (content || status) ? "#fbfbf8" : "#ffffff";
+    let inner = "<div class='t-content'>" + escapeHtml(content) + "</div>";
+    inner += "<span class='t-status' style='background:" + stColor +
+             ";color:" + textColorFor(stColor) + "'>" +
+             (stt ? stt.label : status) + "</span>";
+    td.innerHTML = inner;
+  }
+  document.getElementById("task-modal").style.display = "none";
+  modalTarget = null;
+  showStatus("任務已儲存");
+};
+
+/* =================== 月份切換 =================== */
 document.getElementById("prev-month").onclick = () => {
   viewMonth--; if (viewMonth < 1) { viewMonth = 12; viewYear--; }
   loadMonth();
