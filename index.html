@@ -104,18 +104,28 @@
     background: var(--accent); color: #fff; padding: 7px 5px;
     position: sticky; top: 0; z-index: 10; font-weight: 600; border-right-color: #3a6d5e;
   }
-  thead th.col-name { left: 0; z-index: 15; min-width: 124px; border-right-color: #3a6d5e; }
+  thead th.col-name { left: 0; z-index: 15; min-width: 72px; border-right-color: #3a6d5e; }
   th.weekend { background: var(--accent-dark); }
   tbody td.cell-name {
     position: sticky; left: 0; background: var(--surface); text-align: left;
-    padding: 7px 11px; font-weight: 600; z-index: 5; min-width: 124px;
+    padding: 7px 8px; font-weight: 600; z-index: 5; min-width: 72px;
+    font-size: 13px;
   }
-  tbody td.cell-name .bno { display: block; font-size: 11px; color: var(--ink-soft); font-weight: 400; }
+  tbody td.cell-name .bno { display: none; }
   tbody tr.is-mine td.cell-name { background: var(--mine); border-left: 3px solid var(--mine-line); }
   td.shift-cell {
     height: 38px; min-width: 44px; cursor: pointer;
     user-select: none; -webkit-user-select: none; position: relative; font-weight: 600;
     transition: box-shadow .1s, transform .1s;
+  }
+  /* 手機：格子縮小，畫面塞下更多日期 */
+  @media (max-width: 600px) {
+    thead th.col-name { min-width: 56px; }
+    tbody td.cell-name { min-width: 56px; padding: 5px 5px; font-size: 12px; }
+    td.shift-cell { min-width: 30px; height: 34px; font-size: 12px; }
+    td.task-cell { min-width: 64px; height: 42px; }
+    thead th { padding: 5px 2px; font-size: 11px; }
+    .table-wrap { padding: 6px; }
   }
   td.shift-cell.readonly { cursor: default; color: var(--ink-soft); font-weight: 400; }
   /* 框選中：醒目高亮 —— 粗外框 + 內層藍綠罩 + 輕微放大 */
@@ -237,7 +247,7 @@
 
   <!-- 勤務分頁的班別工具列 -->
   <div class="palette" id="shift-palette">
-    <span class="hint">框選格子後，點班別套用：</span>
+    <span class="hint">點一格，再點同列另一格選整段，然後點班別：</span>
     <span id="shift-buttons"></span>
     <span class="sel-count" id="sel-count"></span>
   </div>
@@ -245,7 +255,7 @@
   <!-- 任務分頁的說明列 -->
   <div class="palette" id="task-palette" style="display:none">
     <span class="hint" id="task-hint">點任一格新增或編輯任務</span>
-    <button class="chip-btn" id="task-assign-btn" style="display:none;background:var(--accent);color:#fff">指派任務給框選的格子</button>
+    <button class="chip-btn" id="task-assign-btn" style="display:none;background:var(--accent);color:#fff">指派任務給已選格子</button>
     <span class="sel-count" id="task-sel-count"></span>
   </div>
 
@@ -396,7 +406,7 @@ document.querySelectorAll(".tab").forEach(t => {
       const isAdmin = me.role === "admin";
       document.getElementById("task-assign-btn").style.display = isAdmin ? "inline-block" : "none";
       document.getElementById("task-hint").textContent = isAdmin
-        ? "框選格子可批次指派；或點單格編輯。"
+        ? "點一格再點同列另一格選整段；同一格點兩次=編輯單格。"
         : "點自己的格子回報任務狀態。";
     }
     clearSelection();
@@ -461,7 +471,7 @@ function renderTable(){
   const nDays = daysInMonth(viewYear, viewMonth);
   const weekNames = ["日","一","二","三","四","五","六"];
 
-  let html = "<table><thead><tr><th class='col-name'>番號 / 姓名</th>";
+  let html = "<table><thead><tr><th class='col-name'>姓名</th>";
   for (let d = 1; d <= nDays; d++) {
     const wd = new Date(viewYear, viewMonth - 1, d).getDay();
     const wk = (wd === 0 || wd === 6) ? " weekend" : "";
@@ -474,8 +484,7 @@ function renderTable(){
     const isMine = person.id === me.id;
     const canEdit = isMine || me.role === "admin";
     html += "<tr class='" + (isMine ? "is-mine" : "") + "'>";
-    html += "<td class='cell-name'>" + person.name +
-            "<span class='bno'>" + person.badge_no + "</span></td>";
+    html += "<td class='cell-name'>" + person.name + "</td>";
     for (let d = 1; d <= nDays; d++) {
       const ds = dateStr(viewYear, viewMonth, d);
       html += (currentTab === "shift")
@@ -533,38 +542,53 @@ function escapeHtml(s){
     ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
 }
 
-/* =================== 勤務：框選互動 =================== */
-let isDragging = false, dragRow = null;
+/* =================== 勤務：框選互動（點起點、點終點）=================== */
+let shiftAnchor = null;  // 起點格子 {entity, date}
+
 function bindShiftEvents(){
   const wrap = document.getElementById("table-wrap");
   wrap.querySelectorAll("td.shift-cell").forEach(td => {
     if (td.dataset.edit !== "1") return;
-    td.addEventListener("mousedown", (e) => {
-      e.preventDefault(); isDragging = true; dragRow = td.dataset.entity;
-      if (!e.shiftKey && !e.metaKey && !e.ctrlKey) clearSelection();
-      toggleCell(td, true); updateSelCount();
-    });
-    td.addEventListener("mouseenter", () => {
-      if (isDragging && td.dataset.entity === dragRow) { toggleCell(td, true); updateSelCount(); }
-    });
-    td.addEventListener("touchstart", () => {
-      isDragging = true; dragRow = td.dataset.entity;
-      clearSelection(); toggleCell(td, true); updateSelCount();
-    }, { passive: true });
+    td.onclick = () => onShiftCellClick(td);
   });
-  wrap.addEventListener("touchmove", (e) => {
-    if (!isDragging) return;
-    e.preventDefault();   // 框選時阻止頁面捲動
-    const t = e.touches[0];
-    const el = document.elementFromPoint(t.clientX, t.clientY);
-    if (el && el.classList.contains("shift-cell") &&
-        el.dataset.edit === "1" && el.dataset.entity === dragRow) {
-      toggleCell(el, true); updateSelCount();
-    }
-  }, { passive: false });
 }
-document.addEventListener("mouseup", () => { isDragging = false; });
-document.addEventListener("touchend", () => { isDragging = false; });
+
+function onShiftCellClick(td){
+  const entity = td.dataset.entity;
+  const date = td.dataset.date;
+
+  if (!shiftAnchor) {
+    // 第一次點：設為起點，只選這一格
+    clearSelection();
+    shiftAnchor = { entity, date };
+    toggleCell(td, true);
+    updateSelCount();
+    showStatus("已選起點，點同一列另一格選一整段");
+  } else if (shiftAnchor.entity !== entity) {
+    // 點到不同列：把那一格當成新的起點
+    clearSelection();
+    shiftAnchor = { entity, date };
+    toggleCell(td, true);
+    updateSelCount();
+    showStatus("已選起點，點同一列另一格選一整段");
+  } else {
+    // 同一列再點一格：選起點到終點之間整段
+    selectShiftRange(entity, shiftAnchor.date, date);
+    shiftAnchor = null;
+    updateSelCount();
+  }
+}
+
+function selectShiftRange(entity, d1, d2){
+  clearSelection();
+  const lo = d1 < d2 ? d1 : d2;
+  const hi = d1 < d2 ? d2 : d1;
+  document.querySelectorAll("td.shift-cell[data-entity='" + entity + "']").forEach(td => {
+    if (td.dataset.edit === "1" && td.dataset.date >= lo && td.dataset.date <= hi) {
+      toggleCell(td, true);
+    }
+  });
+}
 
 function toggleCell(td, on){
   const key = td.dataset.entity + "|" + td.dataset.date;
@@ -573,6 +597,7 @@ function toggleCell(td, on){
 }
 function clearSelection(){
   selectedCells.clear();
+  shiftAnchor = null;
   document.querySelectorAll("td.shift-cell.selected").forEach(td => td.classList.remove("selected"));
 }
 function updateSelCount(){
@@ -609,10 +634,11 @@ async function applyShiftToSelection(code){
 
 /* =================== 任務：互動 =================== */
 let taskSelected = new Set();
-let taskDragging = false, taskDragRow = null;
+let taskAnchor = null;  // 任務框選起點
 
 function clearTaskSelection(){
   taskSelected.clear();
+  taskAnchor = null;
   document.querySelectorAll("td.task-cell.selected").forEach(td => td.classList.remove("selected"));
 }
 function updateTaskSelCount(){
@@ -635,56 +661,53 @@ function bindTaskEvents(){
     if (td.dataset.edit !== "1") return;
 
     if (isAdmin) {
-      // 管理者：框選（拖曳）；放開時若只點一格則開單格編輯
-      td.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        taskDragging = true; taskDragRow = td.dataset.entity;
-        clearTaskSelection();
-        toggleTaskCell(td, true); updateTaskSelCount();
-      });
-      td.addEventListener("mouseenter", () => {
-        if (taskDragging && td.dataset.entity === taskDragRow) {
-          toggleTaskCell(td, true); updateTaskSelCount();
-        }
-      });
-      td.addEventListener("touchstart", () => {
-        taskDragging = true; taskDragRow = td.dataset.entity;
-        clearTaskSelection();
-        toggleTaskCell(td, true); updateTaskSelCount();
-      }, { passive: true });
+      // 管理者：點起點、點終點選一段
+      td.onclick = () => onTaskCellClick(td);
     } else {
       // 一般使用者：點自己的格子，回報狀態
       td.onclick = () => openTaskModal(td.dataset.entity, td.dataset.date);
     }
   });
+}
 
-  if (isAdmin) {
-    wrap.addEventListener("touchmove", (e) => {
-      if (!taskDragging) return;
-      e.preventDefault();   // 框選時阻止頁面捲動
-      const t = e.touches[0];
-      const el = document.elementFromPoint(t.clientX, t.clientY);
-      if (el && el.classList.contains("task-cell") &&
-          el.dataset.edit === "1" && el.dataset.entity === taskDragRow) {
-        toggleTaskCell(el, true); updateTaskSelCount();
-      }
-    }, { passive: false });
+function onTaskCellClick(td){
+  const entity = td.dataset.entity;
+  const date = td.dataset.date;
+
+  if (!taskAnchor) {
+    clearTaskSelection();
+    taskAnchor = { entity, date };
+    toggleTaskCell(td, true);
+    updateTaskSelCount();
+    showStatus("已選起點，再點同一列另一格選一段；或點「指派任務」處理這一格");
+  } else if (taskAnchor.entity !== entity) {
+    clearTaskSelection();
+    taskAnchor = { entity, date };
+    toggleTaskCell(td, true);
+    updateTaskSelCount();
+    showStatus("已選起點，再點同一列另一格選一段");
+  } else if (taskAnchor.date === date) {
+    // 同一格再點一次 = 編輯這一格
+    clearTaskSelection(); updateTaskSelCount();
+    openTaskModal(entity, date);
+  } else {
+    // 選起點到終點整段
+    selectTaskRange(entity, taskAnchor.date, date);
+    taskAnchor = null;
+    updateTaskSelCount();
   }
 }
 
-/* 管理者：放開滑鼠時，若只框到一格 → 視為單格編輯 */
-document.addEventListener("mouseup", () => {
-  if (taskDragging && currentTab === "task" && me && me.role === "admin") {
-    if (taskSelected.size === 1) {
-      const key = Array.from(taskSelected)[0];
-      const [eid, ds] = key.split("|");
-      clearTaskSelection(); updateTaskSelCount();
-      openTaskModal(eid, ds);
+function selectTaskRange(entity, d1, d2){
+  clearTaskSelection();
+  const lo = d1 < d2 ? d1 : d2;
+  const hi = d1 < d2 ? d2 : d1;
+  document.querySelectorAll("td.task-cell[data-entity='" + entity + "']").forEach(td => {
+    if (td.dataset.edit === "1" && td.dataset.date >= lo && td.dataset.date <= hi) {
+      toggleTaskCell(td, true);
     }
-  }
-  taskDragging = false;
-});
-document.addEventListener("touchend", () => { taskDragging = false; });
+  });
+}
 
 /* 管理者：批次指派按鈕 */
 document.getElementById("task-assign-btn").onclick = () => {
