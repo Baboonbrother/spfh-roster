@@ -78,15 +78,25 @@
     padding: 9px 18px; display: flex; align-items: center; gap: 8px;
     flex-wrap: wrap; flex-shrink: 0;
   }
-  /* 極薄展開列,平常永遠顯示,點下去展開工具列 */
+  /* 極薄展開列(永遠顯示;含月份切換 + 展開按鈕) */
   .tools-bar {
     background: var(--surface); border-bottom: 1px solid var(--line);
-    padding: 0; display: flex; justify-content: center; flex-shrink: 0;
+    padding: 3px 8px; display: flex; align-items: center;
+    gap: 4px; flex-shrink: 0;
+  }
+  .tools-bar .mini-btn {
+    background: transparent; border: none; padding: 4px 8px;
+    font-size: 14px; cursor: pointer; color: var(--ink);
+    border-radius: 5px;
+  }
+  .tools-bar .mini-btn:hover { background: var(--bg); }
+  .tools-bar .mini-month {
+    font-size: 13px; font-weight: 700; min-width: 78px; text-align: center;
   }
   .tools-toggle {
-    width: 100%; padding: 5px 0; border: none; background: transparent;
+    flex: 1; padding: 4px 0; border: none; background: transparent;
     color: var(--accent); font-family: inherit; font-size: 12px;
-    font-weight: 600; cursor: pointer;
+    font-weight: 600; cursor: pointer; border-radius: 5px;
   }
   .tools-toggle:hover { background: var(--bg); }
   .palette .hint { font-size: 12px; color: var(--ink-soft); margin-right: 4px; }
@@ -363,7 +373,7 @@
 
 <!-- 主畫面 -->
 <div id="app-view">
-  <header>
+  <header id="main-header">
     <div>
       <div class="title">勤務與任務系統</div>
       <div class="who" id="who"></div>
@@ -383,9 +393,12 @@
     <button class="tab" data-tab="task">任務安排表</button>
   </div>
 
-  <!-- 極薄展開列(永遠顯示),點下去展開/收合工具列 -->
+  <!-- 極薄展開列(永遠顯示;收合時顯示月份切換 + 展開按鈕) -->
   <div class="tools-bar" id="tools-bar" style="display:none">
-    <button class="tools-toggle" id="tools-toggle">▼ 顯示工具</button>
+    <button class="mini-btn" id="mini-prev">‹</button>
+    <span class="mini-month" id="mini-month"></span>
+    <button class="mini-btn" id="mini-next">›</button>
+    <button class="tools-toggle" id="tools-toggle">▼ 展開選單</button>
   </div>
 
   <!-- 勤務工具列(預設收合) -->
@@ -638,10 +651,17 @@ function switchTab(tab){
   document.getElementById("mine-view").style.display =
     tab === "mine" ? "block" : "none";
 
-  // 工具列:在勤務/任務分頁顯示「展開列」;我的面板分頁完全不顯示工具列
+  // 我的面板分頁:header 永遠展開、tools-bar 隱藏
+  // 勤務/任務分頁:依 toolsExpanded 狀態決定
   const onShiftOrTask = (tab === "shift" || tab === "task");
-  document.getElementById("tools-bar").style.display = onShiftOrTask ? "flex" : "none";
-  // 對應 palette:只在展開狀態 + 當前分頁正確才顯示
+  if (onShiftOrTask) {
+    document.getElementById("tools-bar").style.display = "flex";
+    document.getElementById("main-header").style.display = toolsExpanded ? "flex" : "none";
+  } else {
+    // 我的面板:回到「展開」狀態,讓使用者看得到全部
+    document.getElementById("tools-bar").style.display = "none";
+    document.getElementById("main-header").style.display = "flex";
+  }
   document.getElementById("shift-palette").style.display =
     (tab === "shift" && toolsExpanded) ? "flex" : "none";
   document.getElementById("task-palette").style.display =
@@ -682,6 +702,7 @@ function renderShiftPalette(){
 /* =================== 載入當月（兩個分頁的資料一起載） =================== */
 async function loadMonth(){
   document.getElementById("month-label").textContent = viewYear + " 年 " + viewMonth + " 月";
+  document.getElementById("mini-month").textContent = viewYear + "/" + viewMonth;
   const wrap = document.getElementById("table-wrap");
   wrap.innerHTML = "<div class='loading'>載入中…</div>";
   selectedCells.clear(); updateSelCount();
@@ -947,18 +968,31 @@ document.getElementById("shift-show-time").onclick = () => {
   if (currentTab === "shift") renderTable();
 };
 
-/* 工具列展開/收合(統一一個開關;勤務和任務分頁共用) */
+/* 標頭+工具列展開/收合(統一一個開關;收合時 header 也整個藏起來,
+   只剩薄薄一條 tools-bar 顯示月份和展開按鈕) */
 let toolsExpanded = false;
 function setToolsExpanded(open){
   toolsExpanded = open;
-  document.getElementById("tools-toggle").textContent = open ? "▲ 收起工具" : "▼ 顯示工具";
-  // 依當前分頁決定顯示哪一張 palette
+  document.getElementById("tools-toggle").textContent = open ? "▲ 收起選單" : "▼ 展開選單";
+  // 主標頭(系統名稱、姓名、月份切換、登出)
+  document.getElementById("main-header").style.display = open ? "flex" : "none";
+  // 工具列依當前分頁決定顯示哪一張
   document.getElementById("shift-palette").style.display =
     (currentTab === "shift" && open) ? "flex" : "none";
   document.getElementById("task-palette").style.display =
     (currentTab === "task" && open) ? "flex" : "none";
 }
 document.getElementById("tools-toggle").onclick = () => setToolsExpanded(!toolsExpanded);
+
+/* tools-bar 上的迷你月份切換(收合狀態下用) */
+document.getElementById("mini-prev").onclick = () => {
+  viewMonth--; if (viewMonth < 1) { viewMonth = 12; viewYear--; }
+  loadMonth();
+};
+document.getElementById("mini-next").onclick = () => {
+  viewMonth++; if (viewMonth > 12) { viewMonth = 1; viewYear++; }
+  loadMonth();
+};
 
 /* 依視窗寬度設定預設(手機收合、電腦展開) */
 function initToolsBarDefaults(){
