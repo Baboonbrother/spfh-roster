@@ -246,13 +246,80 @@
     width: 50px; font-family: inherit; font-size: 13px;
     padding: 5px 6px; border: 1px solid var(--line); border-radius: 6px;
   }
-  .ss-row .ss-toggle, .ss-row .ss-del {
+  .ss-row .ss-toggle {
     font-family: inherit; font-size: 12px; padding: 5px 9px;
     border: 1px solid var(--line); border-radius: 6px;
     background: var(--surface); cursor: pointer;
   }
-  .ss-row .ss-del { color: #c0392b; }
   .ss-row.inactive { opacity: .5; }
+
+  /* 我的面板 */
+  .mine-section { max-width: 720px; margin: 0 auto; }
+  .mine-section h2 {
+    font-size: 14px; color: var(--ink-soft); letter-spacing: 1px;
+    font-weight: 600; margin: 16px 0 8px; text-transform: uppercase;
+  }
+  .mine-section h2:first-child { margin-top: 0; }
+  .mine-empty {
+    background: var(--surface); border: 1px dashed var(--line);
+    border-radius: 10px; padding: 24px; text-align: center;
+    color: var(--ink-soft); font-size: 13px;
+  }
+  .mine-task {
+    background: var(--surface); border-radius: 10px; padding: 12px 14px;
+    margin-bottom: 8px; display: flex; align-items: flex-start; gap: 12px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
+    border-left: 3px solid #c0392b;
+  }
+  .mine-task.done { border-left-color: #6f9c5b; opacity: .6; }
+  .mine-task .t-main { flex: 1; min-width: 0; }
+  .mine-task .t-date {
+    font-size: 11px; color: var(--ink-soft); font-weight: 600;
+    margin-bottom: 3px;
+  }
+  .mine-task .t-text {
+    font-size: 14px; font-weight: 600; line-height: 1.4;
+    word-break: break-word;
+  }
+  .mine-task .t-status-tag {
+    font-size: 11px; padding: 3px 8px; border-radius: 999px;
+    font-weight: 600; white-space: nowrap;
+  }
+  .mine-task .t-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .mine-task .t-act-btn {
+    font-family: inherit; font-size: 12px; padding: 4px 10px;
+    border-radius: 6px; border: 1px solid var(--line);
+    background: var(--surface); cursor: pointer;
+  }
+
+  /* 多筆任務清單面板（取代原本的單筆任務彈窗） */
+  .tasklist-row {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 10px 0; border-bottom: 1px solid var(--line);
+  }
+  .tasklist-row:last-child { border-bottom: none; }
+  .tasklist-row .tl-content {
+    flex: 1; font-size: 13px; word-break: break-word;
+    line-height: 1.4;
+  }
+  .tasklist-row .tl-status {
+    font-size: 11px; padding: 2px 8px; border-radius: 999px;
+    font-weight: 600; white-space: nowrap; cursor: pointer;
+  }
+  .tasklist-row.done { opacity: .55; }
+  .tasklist-row.done .tl-content { text-decoration: line-through; }
+  .tasklist-empty {
+    padding: 16px; text-align: center; color: var(--ink-soft);
+    font-size: 13px;
+  }
+
+  /* 批次指派彈窗的日期區間區 */
+  .date-range-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .date-range-row input[type=date] {
+    font-family: inherit; font-size: 14px; padding: 6px 8px;
+    border: 1px solid var(--line); border-radius: 7px;
+  }
+  .date-range-row label { font-size: 12px; color: var(--ink-soft); margin: 0; }
 </style>
 </head>
 <body>
@@ -284,7 +351,8 @@
   </header>
 
   <div id="tabs">
-    <button class="tab active" data-tab="shift">勤務預定表</button>
+    <button class="tab active" data-tab="mine">我的面板</button>
+    <button class="tab" data-tab="shift">勤務預定表</button>
     <button class="tab" data-tab="task">任務安排表</button>
   </div>
 
@@ -305,33 +373,61 @@
     <span class="sel-count" id="task-sel-count"></span>
   </div>
 
-  <div class="table-wrap" id="table-wrap">
+  <div class="table-wrap" id="table-wrap" style="display:none">
+    <div class="loading">載入中…</div>
+  </div>
+
+  <!-- 我的面板 -->
+  <div id="mine-view" style="flex:1;overflow:auto;padding:16px;background:var(--bg);">
     <div class="loading">載入中…</div>
   </div>
 </div>
 
-<!-- 任務編輯彈窗 -->
-<div id="task-modal">
-  <div class="box">
-    <h3 id="tm-title">編輯任務</h3>
-    <div class="sub" id="tm-sub"></div>
+<!-- A. 多筆任務清單面板（點格子開這個） -->
+<div id="task-list-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:60;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--surface);border-radius:12px;padding:18px;width:100%;max-width:480px;max-height:80vh;display:flex;flex-direction:column;">
+    <h3 id="tlm-title" style="font-size:16px;margin-bottom:4px;">任務清單</h3>
+    <div id="tlm-sub" style="font-size:12px;color:var(--ink-soft);margin-bottom:12px;"></div>
 
-    <label>任務內容</label>
-    <textarea id="tm-content" placeholder="輸入任務內容…"></textarea>
-    <div id="tm-content-readonly" style="display:none;font-size:14px;padding:8px;background:var(--bg);border-radius:7px;margin-bottom:12px;white-space:pre-wrap;min-height:40px;"></div>
+    <div id="tlm-list" style="flex:1;overflow:auto;margin-bottom:12px;"></div>
 
-    <label>狀態</label>
-    <div class="status-row" id="tm-status"></div>
-
-    <div id="tm-confirm" style="display:none;margin-bottom:14px;">
-      <label style="color:#8a3b2e;">改為「完成」請輸入「完成」二字確認：</label>
-      <input id="tm-confirm-input" type="text" placeholder="在此輸入：完成"
-        style="width:100%;font-family:inherit;font-size:14px;padding:8px;border:1px solid var(--line);border-radius:7px;">
+    <div id="tlm-add-area">
+      <label style="font-size:12px;color:var(--ink-soft);">新增任務</label>
+      <textarea id="tlm-new-content" placeholder="輸入任務內容…" style="width:100%;font-family:inherit;font-size:14px;padding:8px;border:1px solid var(--line);border-radius:7px;resize:vertical;min-height:54px;margin-bottom:8px;"></textarea>
     </div>
 
-    <div class="modal-actions">
-      <button id="tm-cancel">取消</button>
-      <button class="primary" id="tm-save">儲存</button>
+    <div class="modal-actions" style="display:flex;gap:8px;justify-content:space-between;">
+      <button id="tlm-add-btn" class="primary" style="font-family:inherit;font-size:14px;padding:8px 16px;border-radius:7px;cursor:pointer;border:1px solid var(--accent);background:var(--accent);color:#fff;">新增此任務</button>
+      <button id="tlm-close" style="font-family:inherit;font-size:14px;padding:8px 16px;border-radius:7px;cursor:pointer;border:1px solid var(--line);background:var(--surface);">關閉</button>
+    </div>
+  </div>
+</div>
+
+<!-- B. 批次指派彈窗（管理者用） -->
+<div id="batch-assign-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:60;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--surface);border-radius:12px;padding:18px;width:100%;max-width:440px;">
+    <h3 style="font-size:16px;margin-bottom:4px;">批次指派任務</h3>
+    <div id="bam-sub" style="font-size:12px;color:var(--ink-soft);margin-bottom:14px;"></div>
+
+    <label style="font-size:12px;color:var(--ink-soft);">日期範圍</label>
+    <div class="date-range-row">
+      <input type="date" id="bam-from">
+      <label>至</label>
+      <input type="date" id="bam-to">
+    </div>
+
+    <label style="font-size:12px;color:var(--ink-soft);">指派對象</label>
+    <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;">
+      <span id="bam-target-info" style="font-size:13px;flex:1;">（用已選的格子人員）</span>
+      <button id="bam-all-btn" class="chip-btn" style="background:var(--accent);color:#fff;border-color:var(--accent);">指派給全部人</button>
+    </div>
+
+    <label style="font-size:12px;color:var(--ink-soft);">任務內容</label>
+    <textarea id="bam-content" placeholder="輸入任務內容…" style="width:100%;font-family:inherit;font-size:14px;padding:8px;border:1px solid var(--line);border-radius:7px;resize:vertical;min-height:64px;margin-bottom:14px;"></textarea>
+
+    <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;">
+      <button id="bam-cancel" style="font-family:inherit;font-size:14px;padding:8px 16px;border-radius:7px;cursor:pointer;border:1px solid var(--line);background:var(--surface);">取消</button>
+      <button id="bam-save" class="primary" style="font-family:inherit;font-size:14px;padding:8px 16px;border-radius:7px;cursor:pointer;border:1px solid var(--accent);background:var(--accent);color:#fff;">指派</button>
     </div>
   </div>
 </div>
@@ -340,7 +436,7 @@
 <div id="shift-settings-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:60;align-items:center;justify-content:center;padding:20px;">
   <div style="background:var(--surface);border-radius:12px;padding:18px;width:100%;max-width:480px;max-height:80vh;overflow:auto;">
     <h3 style="font-size:16px;margin-bottom:4px;">班別設定</h3>
-    <div style="font-size:12px;color:var(--ink-soft);margin-bottom:14px;">編輯班別名稱、顏色、排序，或停用/刪除。修改會立即儲存到資料庫。</div>
+    <div style="font-size:12px;color:var(--ink-soft);margin-bottom:14px;">編輯班別名稱、顏色、排序，或停用。停用的班別不再顯示在選擇按鈕，但歷史資料仍然保留。修改會立即儲存。</div>
     <div id="ss-list"></div>
     <div style="display:flex;gap:6px;margin-top:8px;">
       <input id="ss-new-code" placeholder="代碼（如：早）" style="flex:1;font-family:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;">
@@ -367,12 +463,13 @@ let me = null, roster = [];
 let shiftTypes = [], shiftMap = {};
 let taskStatuses = [], taskStatusMap = {};
 let viewYear, viewMonth;
-let currentTab = "shift";
+let currentTab = "mine";  // 預設停在「我的面板」
 let shiftLatest = {};          // 勤務：key -> value
-let taskLatest = {};           // 任務：key -> {content, status}
+let tasksByCell = {};          // 任務：key (entity|date) -> [{id, content, status, ...}]
+let myOpenTasks = [];          // 我的面板用：我所有未完成的任務
 let selectedCells = new Set(); // 勤務框選
-let shiftRectAnchor = null;    // 勤務矩形框選起點
-let modalTarget = null;        // 任務彈窗目前編輯的格子
+let shiftRectAnchor = null;
+let tlmContext = null;         // 任務清單面板 context: {entityId, date, taskList}
 
 /* =================== 工具 =================== */
 function showStatus(msg, isErr) {
@@ -460,6 +557,8 @@ async function enterApp(session){
   }
 
   await loadMonth();
+  // 預設停留在「我的面板」
+  switchTab("mine");
 }
 
 /* =================== 批次選取模式 =================== */
@@ -469,28 +568,46 @@ let taskSelectMode = false;
 /* =================== 分頁切換 =================== */
 document.querySelectorAll(".tab").forEach(t => {
   t.onclick = () => {
-    currentTab = t.dataset.tab;
-    document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
-    t.classList.add("active");
-    document.getElementById("shift-palette").style.display =
-      currentTab === "shift" ? "flex" : "none";
-    document.getElementById("task-palette").style.display =
-      currentTab === "task" ? "flex" : "none";
-    if (currentTab === "task") {
-      const isAdmin = me.role === "admin";
-      document.getElementById("task-select-mode").style.display = "inline-block";
-      document.getElementById("task-assign-btn").style.display = "none";
-    }
-    // 切分頁時關閉批次模式、清空選取
-    setShiftSelectMode(false);
-    setTaskSelectMode(false);
-    clearSelection();
-    clearTaskSelection();
-    updateSelCount();
-    updateTaskSelCount();
-    renderTable();
+    switchTab(t.dataset.tab);
   };
 });
+
+function switchTab(tab){
+  currentTab = tab;
+  document.querySelectorAll(".tab").forEach(x => {
+    x.classList.toggle("active", x.dataset.tab === tab);
+  });
+
+  // 顯示對應主區
+  document.getElementById("table-wrap").style.display =
+    (tab === "shift" || tab === "task") ? "block" : "none";
+  document.getElementById("mine-view").style.display =
+    tab === "mine" ? "block" : "none";
+
+  // 工具列
+  document.getElementById("shift-palette").style.display =
+    tab === "shift" ? "flex" : "none";
+  document.getElementById("task-palette").style.display =
+    tab === "task" ? "flex" : "none";
+
+  if (tab === "task") {
+    document.getElementById("task-select-mode").style.display = "inline-block";
+    document.getElementById("task-assign-btn").style.display = "none";
+  }
+
+  setShiftSelectMode(false);
+  setTaskSelectMode(false);
+  clearSelection();
+  clearTaskSelection();
+  updateSelCount();
+  updateTaskSelCount();
+
+  if (tab === "mine") {
+    renderMyPanel();
+  } else {
+    renderTable();
+  }
+}
 
 /* =================== 班別工具列 =================== */
 function renderShiftPalette(){
@@ -525,20 +642,24 @@ async function loadMonth(){
   if (!sres.error) for (const row of sres.data)
     shiftLatest[row.entity_id + "|" + row.work_date] = row.value;
 
-  // 任務
-  const tres = await sb.from("task_log")
-    .select("entity_id,work_date,content,status,created_at")
+  // 任務（新表：每筆任務一列）
+  const tres = await sb.from("task")
+    .select("id,entity_id,work_date,content,status,created_at")
     .gte("work_date", first).lte("work_date", last)
     .order("created_at", { ascending: true });
-  taskLatest = {};
-  if (!tres.error) for (const row of tres.data)
-    taskLatest[row.entity_id + "|" + row.work_date] = { content: row.content, status: row.status };
+  tasksByCell = {};
+  if (!tres.error) for (const row of tres.data) {
+    const k = row.entity_id + "|" + row.work_date;
+    if (!tasksByCell[k]) tasksByCell[k] = [];
+    tasksByCell[k].push(row);
+  }
 
   if (sres.error) {
     wrap.innerHTML = "<div class='loading'>勤務資料載入失敗：" + sres.error.message + "</div>";
     return;
   }
-  renderTable();
+  if (currentTab === "mine") renderMyPanel();
+  else renderTable();
 }
 
 /* =================== 繪製表格（依目前分頁） =================== */
@@ -609,23 +730,20 @@ function shiftCellHtml(entityId, ds, canEdit, isToday){
          ";color:" + textColorFor(bg) + "'>" + label + "</td>";
 }
 
-/* ---------- 任務格子 ---------- */
+/* ---------- 任務格子（顯示多筆摘要） ---------- */
 function taskCellHtml(entityId, ds, canEdit, isToday){
-  const t = taskLatest[entityId + "|" + ds];
+  const tasks = tasksByCell[entityId + "|" + ds] || [];
   let inner = "";
   let bg = "#ffffff";
   let unfinished = false;
-  if (t && (t.content || t.status)) {
-    const stt = taskStatusMap[t.status];
-    const stColor = stt ? stt.color : "#e6e3d4";
+  if (tasks.length > 0) {
     bg = "#fbfbf8";
-    inner = "<div class='t-content'>" + escapeHtml(t.content || "") + "</div>";
-    if (t.status) {
-      inner += "<span class='t-status' style='background:" + stColor +
-               ";color:" + textColorFor(stColor) + "'>" +
-               (stt ? stt.label : t.status) + "</span>";
-    }
-    if (t.content && t.status !== "完成") unfinished = true;
+    const total = tasks.length;
+    const open = tasks.filter(t => t.status !== "完成").length;
+    unfinished = open > 0;
+    inner = "<div class='t-content' style='font-size:11px;line-height:1.3;'>" +
+            total + " 筆" + (open > 0 ? "<br><span style='color:#c0392b'>未完 " + open + "</span>" : "<br><span style='color:#6f9c5b'>全完成</span>") +
+            "</div>";
   }
   return "<td class='task-cell" + (canEdit ? "" : " readonly") +
          (unfinished ? " unfinished" : "") +
@@ -795,8 +913,10 @@ function bindTaskEvents(){
   });
 }
 
+/* ============ 任務格子點擊（多筆版） ============ */
 function onTaskCellClick(td){
   if (taskSelectMode) {
+    // 批次選取模式：矩形框選
     const cell = { entity: td.dataset.entity, date: td.dataset.date };
     if (!taskRectAnchor) {
       clearTaskSelection();
@@ -816,29 +936,30 @@ function onTaskCellClick(td){
       updateTaskSelCount();
     }
   } else {
-    // 一般模式：點格子 = 編輯這一格
-    openTaskModal(td.dataset.entity, td.dataset.date);
+    // 一般模式：開啟「這格的任務清單」
+    openTaskListModal(td.dataset.entity, td.dataset.date);
   }
 }
 
-/* 切換任務批次選取模式（僅 admin 用得到） */
+/* 切換任務批次選取模式（僅 admin） */
 function setTaskSelectMode(on){
   taskSelectMode = on;
   const btn = document.getElementById("task-select-mode");
   const assignBtn = document.getElementById("task-assign-btn");
   const hint = document.getElementById("task-hint");
+  if (!btn) return;
   if (on) {
     btn.classList.add("on");
     btn.textContent = "選取中（點完成後指派）";
-    assignBtn.style.display = "inline-block";
-    hint.textContent = "點一格當起點，再點另一格，框出中間整片範圍（可跨人員）。";
+    if (assignBtn) assignBtn.style.display = "inline-block";
+    if (hint) hint.textContent = "點一格當起點，再點另一格，框出中間整片範圍（可跨人員）。";
   } else {
     btn.classList.remove("on");
     btn.textContent = "批次選取";
-    assignBtn.style.display = "none";
-    hint.textContent = me && me.role === "admin"
-      ? "點格子編輯任務；批次指派請按「批次選取」。"
-      : "點自己的格子回報任務狀態。";
+    if (assignBtn) assignBtn.style.display = "none";
+    if (hint) hint.textContent = me && me.role === "admin"
+      ? "點格子看任務清單；批次指派請按「批次選取」。"
+      : "點自己的格子看/編輯任務。";
     clearTaskSelection();
     updateTaskSelCount();
   }
@@ -847,157 +968,364 @@ document.getElementById("task-select-mode").onclick = () => {
   setTaskSelectMode(!taskSelectMode);
 };
 
-/* 管理者：批次指派按鈕 */
+/* 管理者：點批次指派 → 開「批次指派彈窗」 */
 document.getElementById("task-assign-btn").onclick = () => {
-  if (taskSelected.size === 0) { showStatus("請先勾選要指派的格子", true); return; }
-  openTaskModal(null, null, Array.from(taskSelected));
+  if (taskSelected.size === 0) { showStatus("請先框選要指派的格子", true); return; }
+  openBatchAssignModal(Array.from(taskSelected));
 };
 
-/* ---------- 任務編輯彈窗 ---------- */
-/* batchKeys 有值 = 管理者批次指派模式；否則 = 單格編輯 */
-function openTaskModal(entityId, ds, batchKeys){
-  const isBatch = !!batchKeys;
+/* ============ A. 任務清單面板（點格子開啟） ============ */
+async function openTaskListModal(entityId, date){
+  const person = roster.find(p => p.id === entityId);
   const isAdmin = me.role === "admin";
-  modalTarget = { entityId, ds, batchKeys: batchKeys || null };
+  const isMine = entityId === me.id;
+  const canEdit = isMine || isAdmin;
 
-  const titleEl = document.getElementById("tm-title");
-  const subEl = document.getElementById("tm-sub");
-  const contentEdit = document.getElementById("tm-content");
-  const contentRead = document.getElementById("tm-content-readonly");
+  document.getElementById("tlm-title").textContent =
+    "任務清單 — " + (person ? person.name : "");
+  document.getElementById("tlm-sub").textContent = date;
 
-  let curContent = "", curStatus = "待辦";
-  if (isBatch) {
-    titleEl.textContent = "批次指派任務";
-    subEl.textContent = "將套用到框選的 " + batchKeys.length + " 格";
-  } else {
-    const person = roster.find(p => p.id === entityId);
-    const t = taskLatest[entityId + "|" + ds] || { content: "", status: "待辦" };
-    curContent = t.content || ""; curStatus = t.status || "待辦";
-    titleEl.textContent = "任務 — " + (person ? person.name : "");
-    subEl.textContent = ds;
-  }
+  // 重新從資料庫拉這格的任務（確保新鮮）
+  const { data, error } = await sb.from("task")
+    .select("id,content,status,created_at,created_by")
+    .eq("entity_id", entityId).eq("work_date", date)
+    .order("created_at", { ascending: true });
+  if (error) { showStatus("讀取失敗：" + error.message, true); return; }
 
-  // 內容欄：管理者可編輯；一般使用者唯讀
-  const canEditContent = isAdmin;  // 只有管理者能改內容
-  if (canEditContent) {
-    contentEdit.style.display = "block";
-    contentRead.style.display = "none";
-    contentEdit.value = curContent;
-  } else {
-    contentEdit.style.display = "none";
-    contentRead.style.display = "block";
-    contentRead.textContent = curContent || "（管理者尚未填寫任務內容）";
-  }
+  tlmContext = { entityId, date, tasks: data || [], canEdit, isAdmin };
+  renderTaskList();
 
-  // 狀態選項
-  const statusBox = document.getElementById("tm-status");
-  statusBox.innerHTML = "";
-  let picked = curStatus;
-  const confirmBox = document.getElementById("tm-confirm");
-  const confirmInput = document.getElementById("tm-confirm-input");
-  confirmBox.style.display = "none";
-  confirmInput.value = "";
+  // 新增區只給可編輯者看到
+  document.getElementById("tlm-add-area").style.display = canEdit ? "block" : "none";
+  document.getElementById("tlm-add-btn").style.display = canEdit ? "inline-block" : "none";
 
-  for (const s of taskStatuses) {
-    const opt = document.createElement("div");
-    opt.className = "status-opt" + (s.code === picked ? " picked" : "");
-    opt.textContent = s.label;
-    opt.style.background = s.color; opt.style.color = textColorFor(s.color);
-    opt.onclick = () => {
-      picked = s.code;
-      statusBox.querySelectorAll(".status-opt").forEach(o => o.classList.remove("picked"));
-      opt.classList.add("picked");
-      // 改成「完成」→ 顯示打字確認
-      if (picked === "完成") {
-        confirmBox.style.display = "block";
-        confirmInput.value = "";
-      } else {
-        confirmBox.style.display = "none";
-      }
-    };
-    statusBox.appendChild(opt);
-  }
-  statusBox._getPicked = () => picked;
-  document.getElementById("task-modal").style.display = "flex";
+  document.getElementById("task-list-modal").style.display = "flex";
 }
 
-document.getElementById("tm-cancel").onclick = () => {
-  document.getElementById("task-modal").style.display = "none";
-  modalTarget = null;
-};
+function renderTaskList(){
+  if (!tlmContext) return;
+  const box = document.getElementById("tlm-list");
+  box.innerHTML = "";
+  if (tlmContext.tasks.length === 0) {
+    box.innerHTML = "<div class='tasklist-empty'>還沒有任務</div>";
+    return;
+  }
+  for (const t of tlmContext.tasks) {
+    const stt = taskStatusMap[t.status];
+    const stColor = stt ? stt.color : "#e6e3d4";
+    const div = document.createElement("div");
+    div.className = "tasklist-row" + (t.status === "完成" ? " done" : "");
+    div.innerHTML = `
+      <div class="tl-content">${escapeHtml(t.content)}</div>
+      <span class="tl-status" style="background:${stColor};color:${textColorFor(stColor)}">
+        ${stt ? stt.label : t.status}
+      </span>
+    `;
+    div.querySelector(".tl-status").onclick = () => cycleTaskStatus(t);
+    box.appendChild(div);
+  }
+}
 
-document.getElementById("tm-save").onclick = async () => {
-  if (!modalTarget) return;
-  const isAdmin = me.role === "admin";
-  const status = document.getElementById("tm-status")._getPicked();
+/* 點狀態標籤 = 循環切換狀態（待辦 → 進行中 → 完成 → 待辦） */
+async function cycleTaskStatus(task){
+  if (!tlmContext || !tlmContext.canEdit) {
+    showStatus("無權限修改", true); return;
+  }
+  // 找下一個狀態
+  const codes = taskStatuses.map(s => s.code);
+  const idx = codes.indexOf(task.status);
+  const next = codes[(idx + 1) % codes.length];
 
-  // 完成防呆：必須打字輸入「完成」
-  if (status === "完成") {
-    const typed = document.getElementById("tm-confirm-input").value.trim();
-    if (typed !== "完成") {
-      showStatus("請在確認欄輸入「完成」二字", true);
-      return;
-    }
+  // 改為「完成」要打字確認
+  if (next === "完成") {
+    const typed = prompt("改為「完成」請輸入「完成」二字確認：");
+    if (typed !== "完成") { showStatus("確認字串不符，已取消", true); return; }
   }
 
-  if (modalTarget.batchKeys) {
-    // 管理者批次指派
-    const content = document.getElementById("tm-content").value.trim();
-    const rows = modalTarget.batchKeys.map(key => {
-      const [entity_id, work_date] = key.split("|");
-      return { entity_id, work_date, content, status, created_by: me.email };
-    });
-    const { error } = await sb.from("task_log").insert(rows);
-    if (error) { showStatus("儲存失敗：" + error.message, true); return; }
-    for (const key of modalTarget.batchKeys) {
-      taskLatest[key] = { content, status };
-      paintTaskCell(key, content, status);
-    }
-    clearTaskSelection(); updateTaskSelCount();
-    if (taskSelectMode) setTaskSelectMode(false);
-    showStatus("已指派 " + rows.length + " 格");
-  } else {
-    // 單格編輯
-    const { entityId, ds } = modalTarget;
-    let content;
-    if (isAdmin) {
-      content = document.getElementById("tm-content").value.trim();
-    } else {
-      // 一般使用者不能改內容，沿用原本內容
-      const old = taskLatest[entityId + "|" + ds];
-      content = old ? old.content : "";
-    }
-    const { error } = await sb.from("task_log").insert({
-      entity_id: entityId, work_date: ds,
-      content: content, status: status, created_by: me.email
-    });
-    if (error) { showStatus("儲存失敗：" + error.message, true); return; }
-    taskLatest[entityId + "|" + ds] = { content, status };
-    paintTaskCell(entityId + "|" + ds, content, status);
-    showStatus("任務已儲存");
-  }
+  const { error } = await sb.from("task")
+    .update({ status: next, updated_at: new Date().toISOString(), updated_by: me.email })
+    .eq("id", task.id);
+  if (error) { showStatus("儲存失敗：" + error.message, true); return; }
 
-  document.getElementById("task-modal").style.display = "none";
-  modalTarget = null;
+  // 記錄歷史
+  await sb.from("task_log").insert({
+    task_id: task.id, field: "status", value: next, created_by: me.email
+  });
+
+  task.status = next;
+  // 同步更新 tasksByCell
+  const k = tlmContext.entityId + "|" + tlmContext.date;
+  if (tasksByCell[k]) {
+    const i = tasksByCell[k].findIndex(x => x.id === task.id);
+    if (i >= 0) tasksByCell[k][i].status = next;
+  }
+  renderTaskList();
+  // 同步更新主畫面格子摘要
+  if (currentTab === "task") repaintTaskCell(tlmContext.entityId, tlmContext.date);
+  showStatus("已更新為「" + next + "」");
+}
+
+/* 新增任務 */
+document.getElementById("tlm-add-btn").onclick = async () => {
+  if (!tlmContext || !tlmContext.canEdit) return;
+  const content = document.getElementById("tlm-new-content").value.trim();
+  if (!content) { showStatus("請填任務內容", true); return; }
+
+  const { data, error } = await sb.from("task").insert({
+    entity_id: tlmContext.entityId,
+    work_date: tlmContext.date,
+    content: content,
+    status: "待辦",
+    created_by: me.email,
+    updated_by: me.email
+  }).select().single();
+  if (error) { showStatus("新增失敗：" + error.message, true); return; }
+
+  // 同步本地
+  tlmContext.tasks.push(data);
+  const k = tlmContext.entityId + "|" + tlmContext.date;
+  if (!tasksByCell[k]) tasksByCell[k] = [];
+  tasksByCell[k].push(data);
+
+  document.getElementById("tlm-new-content").value = "";
+  renderTaskList();
+  if (currentTab === "task") repaintTaskCell(tlmContext.entityId, tlmContext.date);
+  showStatus("已新增任務");
 };
 
-/* 重畫單一任務格子 */
-function paintTaskCell(key, content, status){
-  const [eid, ds] = key.split("|");
+document.getElementById("tlm-close").onclick = () => {
+  document.getElementById("task-list-modal").style.display = "none";
+  tlmContext = null;
+};
+
+/* 重畫單一任務格子（摘要） */
+function repaintTaskCell(entityId, date){
   const td = document.querySelector(
-    "td.task-cell[data-entity='" + eid + "'][data-date='" + ds + "']");
+    "td.task-cell[data-entity='" + entityId + "'][data-date='" + date + "']");
   if (!td) return;
-  const stt = taskStatusMap[status];
-  const stColor = stt ? stt.color : "#e6e3d4";
-  td.style.background = (content || status) ? "#fbfbf8" : "#ffffff";
-  let inner = "<div class='t-content'>" + escapeHtml(content) + "</div>";
-  inner += "<span class='t-status' style='background:" + stColor +
-           ";color:" + textColorFor(stColor) + "'>" +
-           (stt ? stt.label : status) + "</span>";
-  td.innerHTML = inner;
-  // 有任務內容、且狀態不是「完成」→ 紅框
-  if (content && status !== "完成") td.classList.add("unfinished");
-  else td.classList.remove("unfinished");
+  // 用 outerHTML 替換
+  const isMine = entityId === me.id;
+  const canEdit = isMine || me.role === "admin";
+  const wd = new Date(date).getDay();
+  const isWeekend = (wd === 0 || wd === 6);
+  const today = new Date();
+  const todayStr = (today.getFullYear() === viewYear && today.getMonth() + 1 === viewMonth)
+    ? dateStr(viewYear, viewMonth, today.getDate()) : null;
+  const isToday = date === todayStr;
+  td.outerHTML = taskCellHtml(entityId, date, canEdit, isToday);
+  // 重綁事件
+  const newTd = document.querySelector(
+    "td.task-cell[data-entity='" + entityId + "'][data-date='" + date + "']");
+  if (newTd && newTd.dataset.edit === "1") {
+    newTd.onclick = () => onTaskCellClick(newTd);
+  }
+}
+
+/* ============ B. 批次指派彈窗 ============ */
+let bamMode = null;  // 'selection' = 用已框選的格子；'all-range' = 全部人 × 日期區間
+let bamSelectionKeys = null;
+
+function openBatchAssignModal(selectionKeys){
+  bamMode = "selection";
+  bamSelectionKeys = selectionKeys;
+
+  // 從已選格子推出預設日期範圍
+  const dates = selectionKeys.map(k => k.split("|")[1]).sort();
+  document.getElementById("bam-from").value = dates[0];
+  document.getElementById("bam-to").value = dates[dates.length - 1];
+
+  // 推出對象資訊
+  const entityIds = new Set(selectionKeys.map(k => k.split("|")[0]));
+  document.getElementById("bam-sub").textContent =
+    "已選 " + selectionKeys.length + " 格（" + entityIds.size + " 人 × " +
+    new Set(dates).size + " 天）";
+  document.getElementById("bam-target-info").textContent =
+    "使用已選的 " + entityIds.size + " 人";
+
+  document.getElementById("bam-content").value = "";
+  document.getElementById("batch-assign-modal").style.display = "flex";
+}
+
+/* 「指派給全部人」按鈕 */
+document.getElementById("bam-all-btn").onclick = () => {
+  bamMode = "all-range";
+  document.getElementById("bam-target-info").textContent =
+    "全部 " + roster.length + " 人（在職）";
+  showStatus("已切換為「指派給全部人」");
+};
+
+document.getElementById("bam-cancel").onclick = () => {
+  document.getElementById("batch-assign-modal").style.display = "none";
+  bamMode = null; bamSelectionKeys = null;
+};
+
+document.getElementById("bam-save").onclick = async () => {
+  const content = document.getElementById("bam-content").value.trim();
+  const fromDate = document.getElementById("bam-from").value;
+  const toDate = document.getElementById("bam-to").value;
+  if (!content) { showStatus("請填任務內容", true); return; }
+  if (!fromDate || !toDate || fromDate > toDate) {
+    showStatus("日期範圍不正確", true); return;
+  }
+
+  // 算出要指派的 (entity, date) 清單
+  const targets = [];
+  let entityIds = [];
+  if (bamMode === "all-range") {
+    entityIds = roster.map(p => p.id);
+  } else {
+    entityIds = Array.from(new Set(bamSelectionKeys.map(k => k.split("|")[0])));
+  }
+  // 日期列表
+  const dates = [];
+  const d1 = new Date(fromDate), d2 = new Date(toDate);
+  for (let d = new Date(d1); d <= d2; d.setDate(d.getDate() + 1)) {
+    dates.push(d.toISOString().slice(0, 10));
+  }
+  for (const eid of entityIds) {
+    for (const ds of dates) {
+      targets.push({
+        entity_id: eid, work_date: ds, content,
+        status: "待辦", created_by: me.email, updated_by: me.email
+      });
+    }
+  }
+
+  if (targets.length === 0) { showStatus("沒有可指派的對象", true); return; }
+  if (targets.length > 500 &&
+      !confirm("即將新增 " + targets.length + " 筆任務，確定嗎？")) return;
+
+  const { data, error } = await sb.from("task").insert(targets).select();
+  if (error) { showStatus("指派失敗：" + error.message, true); return; }
+
+  // 更新本地
+  for (const t of (data || [])) {
+    const k = t.entity_id + "|" + t.work_date;
+    if (!tasksByCell[k]) tasksByCell[k] = [];
+    tasksByCell[k].push(t);
+  }
+
+  document.getElementById("batch-assign-modal").style.display = "none";
+  bamMode = null; bamSelectionKeys = null;
+  clearTaskSelection();
+  if (taskSelectMode) setTaskSelectMode(false);
+  updateTaskSelCount();
+  if (currentTab === "task") renderTable();
+  showStatus("已指派 " + targets.length + " 筆任務");
+};
+
+/* ============ 我的面板 ============ */
+async function renderMyPanel(){
+  const view = document.getElementById("mine-view");
+  view.innerHTML = "<div class='loading'>載入中…</div>";
+
+  // 從資料庫查「我所有未完成的任務」（不限月份）
+  const { data, error } = await sb.from("task")
+    .select("id,work_date,content,status,created_at")
+    .eq("entity_id", me.id)
+    .neq("status", "完成")
+    .order("work_date", { ascending: true });
+
+  if (error) {
+    view.innerHTML = "<div class='loading'>載入失敗：" + error.message + "</div>";
+    return;
+  }
+  myOpenTasks = data || [];
+
+  // 同時查「最近 7 天內完成的」做為「最近已完成」區
+  const recent = new Date();
+  recent.setDate(recent.getDate() - 7);
+  const recentStr = recent.toISOString().slice(0, 10);
+  const doneRes = await sb.from("task")
+    .select("id,work_date,content,status")
+    .eq("entity_id", me.id)
+    .eq("status", "完成")
+    .gte("work_date", recentStr)
+    .order("work_date", { ascending: false });
+  const recentDone = doneRes.data || [];
+
+  // 分組：過期、今天、未來
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const overdue = myOpenTasks.filter(t => t.work_date < todayStr);
+  const today_ = myOpenTasks.filter(t => t.work_date === todayStr);
+  const future = myOpenTasks.filter(t => t.work_date > todayStr);
+
+  let html = "<div class='mine-section'>";
+  html += "<h2>👤 " + escapeHtml(me.name) + " 的待辦</h2>";
+
+  if (myOpenTasks.length === 0 && recentDone.length === 0) {
+    html += "<div class='mine-empty'>目前沒有任務 🎉</div>";
+  } else {
+    if (overdue.length > 0) {
+      html += "<h2 style='color:#c0392b'>⚠ 已過期未完成（" + overdue.length + "）</h2>";
+      html += overdue.map(taskRowHtml).join("");
+    }
+    if (today_.length > 0) {
+      html += "<h2>📌 今天（" + today_.length + "）</h2>";
+      html += today_.map(taskRowHtml).join("");
+    }
+    if (future.length > 0) {
+      html += "<h2>📅 未來（" + future.length + "）</h2>";
+      html += future.map(taskRowHtml).join("");
+    }
+    if (overdue.length + today_.length + future.length === 0) {
+      html += "<div class='mine-empty'>沒有未完成的任務 🎉</div>";
+    }
+    if (recentDone.length > 0) {
+      html += "<h2 style='color:#6f9c5b'>✓ 最近完成</h2>";
+      html += recentDone.slice(0, 10).map(taskRowHtml).join("");
+    }
+  }
+  html += "</div>";
+  view.innerHTML = html;
+
+  // 綁定點擊動作
+  view.querySelectorAll(".mine-task .t-act-btn").forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.dataset.id;
+      const next = btn.dataset.next;
+      cycleMyTask(id, next);
+    };
+  });
+}
+
+function taskRowHtml(t){
+  const stt = taskStatusMap[t.status] || { color: "#e6e3d4", label: t.status };
+  const isDone = t.status === "完成";
+  // 算下一個狀態
+  const codes = taskStatuses.map(s => s.code);
+  const idx = codes.indexOf(t.status);
+  const next = codes[(idx + 1) % codes.length];
+  return `
+    <div class="mine-task${isDone ? ' done' : ''}">
+      <div class="t-main">
+        <div class="t-date">${t.work_date}</div>
+        <div class="t-text">${escapeHtml(t.content)}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+        <span class="t-status-tag" style="background:${stt.color};color:${textColorFor(stt.color)}">${stt.label}</span>
+        ${isDone ? '' :
+          `<button class="t-act-btn" data-id="${t.id}" data-next="${next}">→ ${next}</button>`}
+      </div>
+    </div>
+  `;
+}
+
+async function cycleMyTask(id, next){
+  // 改為「完成」要打字確認
+  if (next === "完成") {
+    const typed = prompt("改為「完成」請輸入「完成」二字確認：");
+    if (typed !== "完成") { showStatus("確認字串不符，已取消", true); return; }
+  }
+  const { error } = await sb.from("task")
+    .update({ status: next, updated_at: new Date().toISOString(), updated_by: me.email })
+    .eq("id", id);
+  if (error) { showStatus("儲存失敗：" + error.message, true); return; }
+  await sb.from("task_log").insert({
+    task_id: id, field: "status", value: next, created_by: me.email
+  });
+  showStatus("已更新為「" + next + "」");
+  renderMyPanel();
 }
 
 /* =================== 月份切換 =================== */
@@ -1052,13 +1380,11 @@ function renderShiftSettings(rows){
       <input type="color" value="${row.color}">
       <input type="number" value="${row.sort_order}" min="0" title="排序">
       <button class="ss-toggle">${row.active ? "停用" : "啟用"}</button>
-      <button class="ss-del" title="刪除（僅未被使用的班別才能刪）">刪除</button>
     `;
     const labelI = div.querySelector(".ss-label");
     const colorI = div.querySelector("input[type=color]");
     const orderI = div.querySelector("input[type=number]");
     const toggleB = div.querySelector(".ss-toggle");
-    const delB = div.querySelector(".ss-del");
 
     const save = async (patch) => {
       const { error } = await sb.from("shift_type")
@@ -1073,12 +1399,6 @@ function renderShiftSettings(rows){
       await save({ active: !row.active });
       div.classList.toggle("inactive");
       toggleB.textContent = row.active ? "停用" : "啟用";
-    };
-    delB.onclick = async () => {
-      if (!confirm("確定刪除「" + row.label + "」？若已有資料使用此班別，刪除會失敗。建議改用「停用」。")) return;
-      const { error } = await sb.from("shift_type").delete().eq("code", row.code);
-      if (error) showStatus("刪除失敗（可能有資料還在用）：" + error.message, true);
-      else { showStatus("已刪除"); div.remove(); }
     };
 
     box.appendChild(div);
