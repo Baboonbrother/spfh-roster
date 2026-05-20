@@ -227,6 +227,32 @@
   #task-modal .modal-actions .primary {
     background: var(--accent); color: #fff; border-color: var(--accent);
   }
+  /* 班別設定列表 */
+  .ss-row {
+    display: flex; align-items: center; gap: 6px; padding: 6px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .ss-row input[type=text] {
+    font-family: inherit; font-size: 13px; padding: 5px 8px;
+    border: 1px solid var(--line); border-radius: 6px;
+  }
+  .ss-row input.ss-code { width: 64px; }
+  .ss-row input.ss-label { flex: 1; min-width: 80px; }
+  .ss-row input[type=color] {
+    width: 36px; height: 30px; border: 1px solid var(--line);
+    border-radius: 6px; background: none; cursor: pointer;
+  }
+  .ss-row input[type=number] {
+    width: 50px; font-family: inherit; font-size: 13px;
+    padding: 5px 6px; border: 1px solid var(--line); border-radius: 6px;
+  }
+  .ss-row .ss-toggle, .ss-row .ss-del {
+    font-family: inherit; font-size: 12px; padding: 5px 9px;
+    border: 1px solid var(--line); border-radius: 6px;
+    background: var(--surface); cursor: pointer;
+  }
+  .ss-row .ss-del { color: #c0392b; }
+  .ss-row.inactive { opacity: .5; }
 </style>
 </head>
 <body>
@@ -267,6 +293,7 @@
     <button class="chip-btn mode-btn" id="shift-select-mode">批次選取</button>
     <span class="hint" id="shift-hint">點格子可直接設定班別</span>
     <span id="shift-buttons"></span>
+    <button class="chip-btn" id="shift-settings-btn" style="display:none">⚙ 班別設定</button>
     <span class="sel-count" id="sel-count"></span>
   </div>
 
@@ -305,6 +332,24 @@
     <div class="modal-actions">
       <button id="tm-cancel">取消</button>
       <button class="primary" id="tm-save">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 班別設定彈窗（僅管理者） -->
+<div id="shift-settings-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:60;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--surface);border-radius:12px;padding:18px;width:100%;max-width:480px;max-height:80vh;overflow:auto;">
+    <h3 style="font-size:16px;margin-bottom:4px;">班別設定</h3>
+    <div style="font-size:12px;color:var(--ink-soft);margin-bottom:14px;">編輯班別名稱、顏色、排序，或停用/刪除。修改會立即儲存到資料庫。</div>
+    <div id="ss-list"></div>
+    <div style="display:flex;gap:6px;margin-top:8px;">
+      <input id="ss-new-code" placeholder="代碼（如：早）" style="flex:1;font-family:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;">
+      <input id="ss-new-label" placeholder="顯示名稱" style="flex:1;font-family:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;">
+      <input id="ss-new-color" type="color" value="#e6e3d4" style="width:42px;height:34px;border:1px solid var(--line);border-radius:7px;background:none;cursor:pointer;">
+      <button class="chip-btn" id="ss-add-btn" style="background:var(--accent);color:#fff;border-color:var(--accent);">新增</button>
+    </div>
+    <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+      <button id="ss-close" style="font-family:inherit;font-size:14px;padding:8px 16px;border-radius:7px;cursor:pointer;border:1px solid var(--line);background:var(--surface);">關閉</button>
     </div>
   </div>
 </div>
@@ -408,6 +453,12 @@ async function enterApp(session){
 
   const now = new Date();
   viewYear = now.getFullYear(); viewMonth = now.getMonth() + 1;
+
+  // 管理者才能看到「班別設定」按鈕
+  if (me.role === "admin") {
+    document.getElementById("shift-settings-btn").style.display = "inline-block";
+  }
+
   await loadMonth();
 }
 
@@ -959,6 +1010,96 @@ document.getElementById("next-month").onclick = () => {
   loadMonth();
 };
 document.getElementById("refresh").onclick = () => loadMonth();
+
+/* =================== 班別設定彈窗（僅 admin） =================== */
+document.getElementById("shift-settings-btn").onclick = openShiftSettings;
+document.getElementById("ss-close").onclick = closeShiftSettings;
+
+async function openShiftSettings(){
+  // 重新從資料庫拉一次（含已停用的，讓管理者可以重新啟用）
+  const { data, error } = await sb.from("shift_type")
+    .select("code,label,color,sort_order,active")
+    .order("sort_order");
+  if (error) { showStatus("讀取失敗：" + error.message, true); return; }
+  renderShiftSettings(data || []);
+  document.getElementById("shift-settings-modal").style.display = "flex";
+}
+function closeShiftSettings(){
+  document.getElementById("shift-settings-modal").style.display = "none";
+  // 關閉時重新載入畫面上的班別與當月資料，確保同步
+  reloadShiftTypesAndRefresh();
+}
+
+async function reloadShiftTypesAndRefresh(){
+  const st = await sb.from("shift_type")
+    .select("code,label,color,sort_order")
+    .eq("active", true).order("sort_order");
+  shiftTypes = st.data || [];
+  shiftMap = {}; shiftTypes.forEach(s => shiftMap[s.code] = s);
+  renderShiftPalette();
+  if (currentTab === "shift") renderTable();
+}
+
+function renderShiftSettings(rows){
+  const box = document.getElementById("ss-list");
+  box.innerHTML = "";
+  for (const row of rows) {
+    const div = document.createElement("div");
+    div.className = "ss-row" + (row.active ? "" : " inactive");
+    div.innerHTML = `
+      <input class="ss-code" type="text" value="${escapeHtml(row.code)}" readonly title="代碼不可改（會影響歷史資料）" style="background:var(--bg)">
+      <input class="ss-label" type="text" value="${escapeHtml(row.label)}">
+      <input type="color" value="${row.color}">
+      <input type="number" value="${row.sort_order}" min="0" title="排序">
+      <button class="ss-toggle">${row.active ? "停用" : "啟用"}</button>
+      <button class="ss-del" title="刪除（僅未被使用的班別才能刪）">刪除</button>
+    `;
+    const labelI = div.querySelector(".ss-label");
+    const colorI = div.querySelector("input[type=color]");
+    const orderI = div.querySelector("input[type=number]");
+    const toggleB = div.querySelector(".ss-toggle");
+    const delB = div.querySelector(".ss-del");
+
+    const save = async (patch) => {
+      const { error } = await sb.from("shift_type")
+        .update(patch).eq("code", row.code);
+      if (error) showStatus("儲存失敗：" + error.message, true);
+      else { showStatus("已儲存"); Object.assign(row, patch); }
+    };
+    labelI.onchange = () => save({ label: labelI.value });
+    colorI.onchange = () => save({ color: colorI.value });
+    orderI.onchange = () => save({ sort_order: parseInt(orderI.value) || 0 });
+    toggleB.onclick = async () => {
+      await save({ active: !row.active });
+      div.classList.toggle("inactive");
+      toggleB.textContent = row.active ? "停用" : "啟用";
+    };
+    delB.onclick = async () => {
+      if (!confirm("確定刪除「" + row.label + "」？若已有資料使用此班別，刪除會失敗。建議改用「停用」。")) return;
+      const { error } = await sb.from("shift_type").delete().eq("code", row.code);
+      if (error) showStatus("刪除失敗（可能有資料還在用）：" + error.message, true);
+      else { showStatus("已刪除"); div.remove(); }
+    };
+
+    box.appendChild(div);
+  }
+}
+
+document.getElementById("ss-add-btn").onclick = async () => {
+  const code = document.getElementById("ss-new-code").value.trim();
+  const label = document.getElementById("ss-new-label").value.trim();
+  const color = document.getElementById("ss-new-color").value;
+  if (!code || !label) { showStatus("請填代碼和名稱", true); return; }
+  const { error } = await sb.from("shift_type").insert({
+    code, label, color, sort_order: 99, active: true
+  });
+  if (error) { showStatus("新增失敗：" + error.message, true); return; }
+  showStatus("已新增：" + label);
+  document.getElementById("ss-new-code").value = "";
+  document.getElementById("ss-new-label").value = "";
+  // 重畫列表
+  openShiftSettings();
+};
 </script>
 </body>
 </html>
