@@ -706,16 +706,31 @@ function renderTable(){
   if (currentTab === "shift") bindShiftEvents();
   else bindTaskEvents();
 
-  // 開啟時自動捲到使用者自己那一列
+  // 開啟時自動捲到「我的列 × 今天那欄」
   scrollToMyRow();
+  scrollToTodayColumn();
 }
 
-/* 捲動定位到使用者自己那一列 */
+/* 捲動定位到使用者自己那一列（直向） */
 function scrollToMyRow(){
   const myRow = document.querySelector("tr.is-mine");
   if (myRow) {
     myRow.scrollIntoView({ block: "center", behavior: "auto" });
   }
+}
+
+/* 捲動定位到今天那欄（橫向：把今天放在畫面偏左中） */
+function scrollToTodayColumn(){
+  const wrap = document.getElementById("table-wrap");
+  const todayCell = document.querySelector("td.today-col");
+  if (!wrap || !todayCell) return;
+  // 計算今天那欄在表格容器內的位置
+  const cellLeft = todayCell.offsetLeft;
+  // 姓名欄是 sticky 黏在左邊；扣掉它的寬度後，把今天放到容器內 1/4 處
+  const nameCol = document.querySelector("td.cell-name");
+  const nameW = nameCol ? nameCol.offsetWidth : 80;
+  const target = cellLeft - nameW - Math.floor(wrap.clientWidth * 0.25);
+  wrap.scrollLeft = Math.max(0, target);
 }
 
 /* ---------- 勤務格子 ---------- */
