@@ -359,6 +359,7 @@
   <!-- 勤務分頁的班別工具列 -->
   <div class="palette" id="shift-palette">
     <button class="chip-btn mode-btn" id="shift-select-mode">批次選取</button>
+    <button class="chip-btn mode-btn" id="shift-show-time">⏱ 修改時間</button>
     <span class="hint" id="shift-hint">點格子可直接設定班別</span>
     <span id="shift-buttons"></span>
     <button class="chip-btn" id="shift-settings-btn" style="display:none">⚙ 班別設定</button>
@@ -465,6 +466,8 @@ let taskStatuses = [], taskStatusMap = {};
 let viewYear, viewMonth;
 let currentTab = "mine";  // 預設停在「我的面板」
 let shiftLatest = {};          // 勤務：key -> value
+let shiftLatestTime = {};      // 勤務：key -> 最後修改時間 ISO 字串
+let showShiftTime = false;     // 是否顯示修改時間
 let tasksByCell = {};          // 任務：key (entity|date) -> [{id, content, status, ...}]
 let myOpenTasks = [];          // 我的面板用：我所有未完成的任務
 let selectedCells = new Set(); // 勤務框選
@@ -633,14 +636,18 @@ async function loadMonth(){
   const first = dateStr(viewYear, viewMonth, 1);
   const last = dateStr(viewYear, viewMonth, nDays);
 
-  // 勤務
+  // 勤務（順帶記每格最後修改時間）
   const sres = await sb.from("shift_log")
     .select("entity_id,work_date,value,created_at")
     .gte("work_date", first).lte("work_date", last)
     .order("created_at", { ascending: true });
   shiftLatest = {};
-  if (!sres.error) for (const row of sres.data)
-    shiftLatest[row.entity_id + "|" + row.work_date] = row.value;
+  shiftLatestTime = {};
+  if (!sres.error) for (const row of sres.data) {
+    const k = row.entity_id + "|" + row.work_date;
+    shiftLatest[k] = row.value;
+    shiftLatestTime[k] = row.created_at;  // 因為按時間升冪,最後一筆就是最新
+  }
 
   // 任務（新表：每筆任務一列；過濾掉已撤銷）
   const tres = await sb.from("task")
@@ -735,15 +742,32 @@ function scrollToTodayColumn(){
 
 /* ---------- 勤務格子 ---------- */
 function shiftCellHtml(entityId, ds, canEdit, isToday){
-  const val = shiftLatest[entityId + "|" + ds] || "未排";
+  const k = entityId + "|" + ds;
+  const val = shiftLatest[k] || "未排";
   const st = shiftMap[val];
   const bg = st ? st.color : "#ffffff";
   const label = (val === "未排") ? "" : (st ? st.label.replace(/班$/,"") : val);
+  // 修改時間（只有開啟 showShiftTime 且該格有寫過資料時才顯示）
+  let timeHtml = "";
+  if (showShiftTime && shiftLatestTime[k]) {
+    timeHtml = "<div style='font-size:9px;font-weight:400;opacity:.75;line-height:1.1;margin-top:1px;'>" +
+               formatShortTime(shiftLatestTime[k]) + "</div>";
+  }
   return "<td class='shift-cell" + (canEdit ? "" : " readonly") +
          (isToday ? " today-col" : "") +
          "' data-entity='" + entityId + "' data-date='" + ds +
          "' data-edit='" + (canEdit ? 1 : 0) + "' style='background:" + bg +
-         ";color:" + textColorFor(bg) + "'>" + label + "</td>";
+         ";color:" + textColorFor(bg) + "'>" + label + timeHtml + "</td>";
+}
+
+/* 格式化時間為 M/D HH:MM */
+function formatShortTime(iso){
+  const d = new Date(iso);
+  const M = d.getMonth() + 1;
+  const D = d.getDate();
+  const h = String(d.getHours()).padStart(2, "0");
+  const m = String(d.getMinutes()).padStart(2, "0");
+  return M + "/" + D + " " + h + ":" + m;
 }
 
 /* ---------- 任務格子（顯示多筆摘要） ---------- */
@@ -857,6 +881,15 @@ document.getElementById("shift-select-mode").onclick = () => {
   setShiftSelectMode(!shiftSelectMode);
 };
 
+/* 顯示修改時間切換 */
+document.getElementById("shift-show-time").onclick = () => {
+  showShiftTime = !showShiftTime;
+  const btn = document.getElementById("shift-show-time");
+  btn.classList.toggle("on", showShiftTime);
+  btn.textContent = showShiftTime ? "⏱ 隱藏時間" : "⏱ 修改時間";
+  if (currentTab === "shift") renderTable();
+};
+
 function toggleCell(td, on){
   const key = td.dataset.entity + "|" + td.dataset.date;
   if (on) { selectedCells.add(key); td.classList.add("selected"); }
@@ -883,16 +916,23 @@ async function applyShiftToSelection(code){
   }
   const { error } = await sb.from("shift_log").insert(rows);
   if (error) { showStatus("儲存失敗：" + error.message, true); return; }
+  const nowIso = new Date().toISOString();
   const keys = Array.from(selectedCells);
   for (const key of keys) {
     shiftLatest[key] = code;
+    shiftLatestTime[key] = nowIso;  // 剛剛寫入,時間就是現在
     const [eid, ds] = key.split("|");
     const td = document.querySelector(
       "td.shift-cell[data-entity='" + eid + "'][data-date='" + ds + "']");
     if (td) {
       const st = shiftMap[code];
       td.style.background = st.color; td.style.color = textColorFor(st.color);
-      td.textContent = (code === "未排") ? "" : st.label.replace(/班$/,"");
+      const label = (code === "未排") ? "" : st.label.replace(/班$/,"");
+      const timeHtml = showShiftTime
+        ? "<div style='font-size:9px;font-weight:400;opacity:.75;line-height:1.1;margin-top:1px;'>" +
+          formatShortTime(nowIso) + "</div>"
+        : "";
+      td.innerHTML = label + timeHtml;
     }
   }
   clearSelection(); updateSelCount();
