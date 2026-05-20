@@ -78,6 +78,17 @@
     padding: 9px 18px; display: flex; align-items: center; gap: 8px;
     flex-wrap: wrap; flex-shrink: 0;
   }
+  /* 極薄展開列,平常永遠顯示,點下去展開工具列 */
+  .tools-bar {
+    background: var(--surface); border-bottom: 1px solid var(--line);
+    padding: 0; display: flex; justify-content: center; flex-shrink: 0;
+  }
+  .tools-toggle {
+    width: 100%; padding: 5px 0; border: none; background: transparent;
+    color: var(--accent); font-family: inherit; font-size: 12px;
+    font-weight: 600; cursor: pointer;
+  }
+  .tools-toggle:hover { background: var(--bg); }
   .palette .hint { font-size: 12px; color: var(--ink-soft); margin-right: 4px; }
   .chip-btn {
     border: 1px solid var(--line); padding: 6px 14px; border-radius: 7px;
@@ -372,22 +383,27 @@
     <button class="tab" data-tab="task">任務安排表</button>
   </div>
 
-  <!-- 勤務分頁的班別工具列 -->
-  <div class="palette" id="shift-palette">
+  <!-- 極薄展開列(永遠顯示),點下去展開/收合工具列 -->
+  <div class="tools-bar" id="tools-bar" style="display:none">
+    <button class="tools-toggle" id="tools-toggle">▼ 顯示工具</button>
+  </div>
+
+  <!-- 勤務工具列(預設收合) -->
+  <div class="palette" id="shift-palette" style="display:none">
     <button class="chip-btn mode-btn" id="shift-select-mode">批次選取</button>
-    <button class="chip-btn mode-btn" id="shift-show-time">⏱ 修改時間</button>
-    <span class="hint" id="shift-hint">點格子可直接設定班別</span>
     <span id="shift-buttons"></span>
+    <button class="chip-btn mode-btn" id="shift-show-time">⏱ 修改時間</button>
     <button class="chip-btn" id="shift-settings-btn" style="display:none">⚙ 班別設定</button>
     <button class="chip-btn" id="roster-order-btn" style="display:none">⚙ 人員排序</button>
+    <span class="hint" id="shift-hint">點格子可直接設定班別</span>
     <span class="sel-count" id="sel-count"></span>
   </div>
 
-  <!-- 任務分頁的說明列 -->
+  <!-- 任務工具列(預設收合) -->
   <div class="palette" id="task-palette" style="display:none">
     <button class="chip-btn mode-btn" id="task-select-mode" style="display:none">批次選取</button>
-    <span class="hint" id="task-hint">點任一格新增或編輯任務</span>
     <button class="chip-btn" id="task-assign-btn" style="display:none;background:var(--accent);color:#fff">指派任務給已選格子</button>
+    <span class="hint" id="task-hint">點任一格新增或編輯任務</span>
     <span class="sel-count" id="task-sel-count"></span>
   </div>
 
@@ -595,6 +611,8 @@ async function enterApp(session){
   await loadMonth();
   // 預設停留在「我的面板」
   switchTab("mine");
+  // 依視窗寬度設定工具列折疊預設(手機自動折疊)
+  initToolsBarDefaults();
 }
 
 /* =================== 批次選取模式 =================== */
@@ -620,11 +638,14 @@ function switchTab(tab){
   document.getElementById("mine-view").style.display =
     tab === "mine" ? "block" : "none";
 
-  // 工具列
+  // 工具列:在勤務/任務分頁顯示「展開列」;我的面板分頁完全不顯示工具列
+  const onShiftOrTask = (tab === "shift" || tab === "task");
+  document.getElementById("tools-bar").style.display = onShiftOrTask ? "flex" : "none";
+  // 對應 palette:只在展開狀態 + 當前分頁正確才顯示
   document.getElementById("shift-palette").style.display =
-    tab === "shift" ? "flex" : "none";
+    (tab === "shift" && toolsExpanded) ? "flex" : "none";
   document.getElementById("task-palette").style.display =
-    tab === "task" ? "flex" : "none";
+    (tab === "task" && toolsExpanded) ? "flex" : "none";
 
   if (tab === "task") {
     document.getElementById("task-select-mode").style.display = "inline-block";
@@ -925,6 +946,25 @@ document.getElementById("shift-show-time").onclick = () => {
   btn.textContent = showShiftTime ? "⏱ 隱藏時間" : "⏱ 修改時間";
   if (currentTab === "shift") renderTable();
 };
+
+/* 工具列展開/收合(統一一個開關;勤務和任務分頁共用) */
+let toolsExpanded = false;
+function setToolsExpanded(open){
+  toolsExpanded = open;
+  document.getElementById("tools-toggle").textContent = open ? "▲ 收起工具" : "▼ 顯示工具";
+  // 依當前分頁決定顯示哪一張 palette
+  document.getElementById("shift-palette").style.display =
+    (currentTab === "shift" && open) ? "flex" : "none";
+  document.getElementById("task-palette").style.display =
+    (currentTab === "task" && open) ? "flex" : "none";
+}
+document.getElementById("tools-toggle").onclick = () => setToolsExpanded(!toolsExpanded);
+
+/* 依視窗寬度設定預設(手機收合、電腦展開) */
+function initToolsBarDefaults(){
+  const isMobile = window.innerWidth <= 600;
+  setToolsExpanded(!isMobile);
+}
 
 function toggleCell(td, on){
   const key = td.dataset.entity + "|" + td.dataset.date;
