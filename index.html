@@ -117,6 +117,19 @@
   }
   tbody td.cell-name .bno { display: none; }
   tbody tr.is-mine td.cell-name { background: var(--mine); border-left: 3px solid var(--mine-line); }
+  /* 我的列：整列紅色底線，一眼認出是自己 */
+  tbody tr.is-mine td { border-bottom: 2px solid #c0392b; }
+  tbody tr.is-mine td.cell-name::after {
+    content: "我"; position: absolute; right: 5px; top: 50%;
+    transform: translateY(-50%);
+    background: #c0392b; color: #fff; font-size: 10px;
+    padding: 1px 5px; border-radius: 3px; font-weight: 700;
+  }
+  /* 今天的日期：藍色直線標示 */
+  th.today, td.today-col {
+    box-shadow: inset 2px 0 0 #1d6fe0, inset -2px 0 0 #1d6fe0;
+  }
+  thead th.today { background: #1d6fe0; }
   td.shift-cell {
     height: 38px; min-width: 44px; cursor: pointer;
     user-select: none; -webkit-user-select: none; position: relative; font-weight: 600;
@@ -313,6 +326,7 @@ let currentTab = "shift";
 let shiftLatest = {};          // 勤務：key -> value
 let taskLatest = {};           // 任務：key -> {content, status}
 let selectedCells = new Set(); // 勤務框選
+let shiftRectAnchor = null;    // 勤務矩形框選起點
 let modalTarget = null;        // 任務彈窗目前編輯的格子
 
 /* =================== 工具 =================== */
@@ -482,11 +496,18 @@ function renderTable(){
   const nDays = daysInMonth(viewYear, viewMonth);
   const weekNames = ["日","一","二","三","四","五","六"];
 
+  // 今天（只有檢視的年月正好是這個月，才標示）
+  const today = new Date();
+  const todayStr = (today.getFullYear() === viewYear && today.getMonth() + 1 === viewMonth)
+    ? dateStr(viewYear, viewMonth, today.getDate()) : null;
+
   let html = "<table><thead><tr><th class='col-name'>姓名</th>";
   for (let d = 1; d <= nDays; d++) {
+    const ds = dateStr(viewYear, viewMonth, d);
     const wd = new Date(viewYear, viewMonth - 1, d).getDay();
-    const wk = (wd === 0 || wd === 6) ? " weekend" : "";
-    html += "<th class='" + wk + "'>" + d +
+    let cls = (wd === 0 || wd === 6) ? "weekend" : "";
+    if (ds === todayStr) cls += " today";
+    html += "<th class='" + cls.trim() + "'>" + d +
             "<br><span style='font-weight:400;font-size:11px'>" + weekNames[wd] + "</span></th>";
   }
   html += "</tr></thead><tbody>";
@@ -494,13 +515,15 @@ function renderTable(){
   for (const person of roster) {
     const isMine = person.id === me.id;
     const canEdit = isMine || me.role === "admin";
-    html += "<tr class='" + (isMine ? "is-mine" : "") + "'>";
+    html += "<tr class='" + (isMine ? "is-mine" : "") +
+            "' data-rowentity='" + person.id + "'>";
     html += "<td class='cell-name'>" + person.name + "</td>";
     for (let d = 1; d <= nDays; d++) {
       const ds = dateStr(viewYear, viewMonth, d);
+      const isToday = (ds === todayStr);
       html += (currentTab === "shift")
-        ? shiftCellHtml(person.id, ds, canEdit)
-        : taskCellHtml(person.id, ds, canEdit);
+        ? shiftCellHtml(person.id, ds, canEdit, isToday)
+        : taskCellHtml(person.id, ds, canEdit, isToday);
     }
     html += "</tr>";
   }
@@ -509,22 +532,34 @@ function renderTable(){
 
   if (currentTab === "shift") bindShiftEvents();
   else bindTaskEvents();
+
+  // 開啟時自動捲到使用者自己那一列
+  scrollToMyRow();
+}
+
+/* 捲動定位到使用者自己那一列 */
+function scrollToMyRow(){
+  const myRow = document.querySelector("tr.is-mine");
+  if (myRow) {
+    myRow.scrollIntoView({ block: "center", behavior: "auto" });
+  }
 }
 
 /* ---------- 勤務格子 ---------- */
-function shiftCellHtml(entityId, ds, canEdit){
+function shiftCellHtml(entityId, ds, canEdit, isToday){
   const val = shiftLatest[entityId + "|" + ds] || "未排";
   const st = shiftMap[val];
   const bg = st ? st.color : "#ffffff";
   const label = (val === "未排") ? "" : (st ? st.label.replace(/班$/,"") : val);
   return "<td class='shift-cell" + (canEdit ? "" : " readonly") +
+         (isToday ? " today-col" : "") +
          "' data-entity='" + entityId + "' data-date='" + ds +
          "' data-edit='" + (canEdit ? 1 : 0) + "' style='background:" + bg +
          ";color:" + textColorFor(bg) + "'>" + label + "</td>";
 }
 
 /* ---------- 任務格子 ---------- */
-function taskCellHtml(entityId, ds, canEdit){
+function taskCellHtml(entityId, ds, canEdit, isToday){
   const t = taskLatest[entityId + "|" + ds];
   let inner = "";
   let bg = "#ffffff";
@@ -539,11 +574,11 @@ function taskCellHtml(entityId, ds, canEdit){
                ";color:" + textColorFor(stColor) + "'>" +
                (stt ? stt.label : t.status) + "</span>";
     }
-    // 有任務內容、且狀態不是「完成」→ 視為未完成
     if (t.content && t.status !== "完成") unfinished = true;
   }
   return "<td class='task-cell" + (canEdit ? "" : " readonly") +
          (unfinished ? " unfinished" : "") +
+         (isToday ? " today-col" : "") +
          "' data-entity='" + entityId + "' data-date='" + ds +
          "' data-edit='" + (canEdit ? 1 : 0) + "' style='background:" + bg + "'>" +
          inner + "</td>";
@@ -551,6 +586,28 @@ function taskCellHtml(entityId, ds, canEdit){
 function escapeHtml(s){
   return String(s).replace(/[&<>"]/g, c =>
     ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+}
+
+/* =================== 矩形範圍計算（起點×終點 → 中間整片格子）=================== */
+/* 回傳 [{entity, date}, ...]，涵蓋兩格之間的「人 × 日期」矩形 */
+function rectRange(a, b){
+  // 人員：用 roster 的順序定出範圍
+  const iA = roster.findIndex(p => p.id === a.entity);
+  const iB = roster.findIndex(p => p.id === b.entity);
+  if (iA < 0 || iB < 0) return [];
+  const loP = Math.min(iA, iB), hiP = Math.max(iA, iB);
+  // 日期：字串比較即可（YYYY-MM-DD）
+  const loD = a.date < b.date ? a.date : b.date;
+  const hiD = a.date < b.date ? b.date : a.date;
+  const cells = [];
+  for (let i = loP; i <= hiP; i++) {
+    const pid = roster[i].id;
+    for (let d = 1; d <= daysInMonth(viewYear, viewMonth); d++) {
+      const ds = dateStr(viewYear, viewMonth, d);
+      if (ds >= loD && ds <= hiD) cells.push({ entity: pid, date: ds });
+    }
+  }
+  return cells;
 }
 
 /* =================== 勤務：批次選取模式互動 =================== */
@@ -564,11 +621,26 @@ function bindShiftEvents(){
 
 function onShiftCellClick(td){
   if (shiftSelectMode) {
-    // 批次選取模式：點格子 = 勾選 / 取消勾選
-    const key = td.dataset.entity + "|" + td.dataset.date;
-    if (selectedCells.has(key)) toggleCell(td, false);
-    else toggleCell(td, true);
-    updateSelCount();
+    const cell = { entity: td.dataset.entity, date: td.dataset.date };
+    if (!shiftRectAnchor) {
+      // 第一次點 = 起點
+      clearSelection();
+      shiftRectAnchor = cell;
+      toggleCell(td, true);
+      updateSelCount();
+      showStatus("已選起點，再點另一格框出範圍");
+    } else {
+      // 第二次點 = 終點，框出矩形
+      const cells = rectRange(shiftRectAnchor, cell);
+      clearSelection();
+      for (const c of cells) {
+        const el = document.querySelector(
+          "td.shift-cell[data-entity='" + c.entity + "'][data-date='" + c.date + "']");
+        if (el && el.dataset.edit === "1") toggleCell(el, true);
+      }
+      shiftRectAnchor = null;
+      updateSelCount();
+    }
   } else {
     // 一般模式：點一格 = 直接選這一格（再點班別套用）
     clearSelection();
@@ -586,8 +658,8 @@ function setShiftSelectMode(on){
     btn.classList.add("on");
     btn.textContent = "選取中（點完成後選班別）";
     hint.textContent = me.role === "admin"
-      ? "點任意格子勾選，可跨人員、跨日期；選好點班別套用。"
-      : "點自己的格子勾選；選好點班別套用。";
+      ? "點一格當起點，再點另一格，框出中間整片範圍（可跨人員）。"
+      : "點一格當起點，再點同列另一格，框出整段。";
   } else {
     btn.classList.remove("on");
     btn.textContent = "批次選取";
@@ -607,6 +679,7 @@ function toggleCell(td, on){
 }
 function clearSelection(){
   selectedCells.clear();
+  shiftRectAnchor = null;
   document.querySelectorAll("td.shift-cell.selected").forEach(td => td.classList.remove("selected"));
 }
 function updateSelCount(){
@@ -644,9 +717,11 @@ async function applyShiftToSelection(code){
 
 /* =================== 任務：互動 =================== */
 let taskSelected = new Set();
+let taskRectAnchor = null;  // 任務矩形框選起點
 
 function clearTaskSelection(){
   taskSelected.clear();
+  taskRectAnchor = null;
   document.querySelectorAll("td.task-cell.selected").forEach(td => td.classList.remove("selected"));
 }
 function updateTaskSelCount(){
@@ -671,11 +746,24 @@ function bindTaskEvents(){
 
 function onTaskCellClick(td){
   if (taskSelectMode) {
-    // 批次選取模式：點格子 = 勾選 / 取消
-    const key = td.dataset.entity + "|" + td.dataset.date;
-    if (taskSelected.has(key)) toggleTaskCell(td, false);
-    else toggleTaskCell(td, true);
-    updateTaskSelCount();
+    const cell = { entity: td.dataset.entity, date: td.dataset.date };
+    if (!taskRectAnchor) {
+      clearTaskSelection();
+      taskRectAnchor = cell;
+      toggleTaskCell(td, true);
+      updateTaskSelCount();
+      showStatus("已選起點，再點另一格框出範圍");
+    } else {
+      const cells = rectRange(taskRectAnchor, cell);
+      clearTaskSelection();
+      for (const c of cells) {
+        const el = document.querySelector(
+          "td.task-cell[data-entity='" + c.entity + "'][data-date='" + c.date + "']");
+        if (el && el.dataset.edit === "1") toggleTaskCell(el, true);
+      }
+      taskRectAnchor = null;
+      updateTaskSelCount();
+    }
   } else {
     // 一般模式：點格子 = 編輯這一格
     openTaskModal(td.dataset.entity, td.dataset.date);
@@ -692,7 +780,7 @@ function setTaskSelectMode(on){
     btn.classList.add("on");
     btn.textContent = "選取中（點完成後指派）";
     assignBtn.style.display = "inline-block";
-    hint.textContent = "點任意格子勾選，可跨人員、跨日期；選好點「指派任務」。";
+    hint.textContent = "點一格當起點，再點另一格，框出中間整片範圍（可跨人員）。";
   } else {
     btn.classList.remove("on");
     btn.textContent = "批次選取";
