@@ -62,41 +62,43 @@
   .controls .month-label { font-weight: 700; min-width: 96px; text-align: center; }
   .btn-logout { color: var(--ink-soft); }
   /* 分頁切換 */
-  #tabs {
+  /* 主橫幅 — 單行容納所有導覽元素 */
+  #master-bar {
     background: var(--surface); border-bottom: 1px solid var(--line);
-    padding: 0 14px; display: flex; gap: 4px; flex-shrink: 0;
+    display: flex; align-items: center; flex-shrink: 0;
+    padding: 0 6px;
+  }
+  #tabs {
+    display: flex; gap: 2px; flex-shrink: 0;
   }
   .tab {
-    border: none; background: none; font-family: inherit; font-size: 14px;
-    padding: 11px 18px; cursor: pointer; color: var(--ink-soft);
+    border: none; background: none; font-family: inherit; font-size: 13px;
+    padding: 8px 10px; cursor: pointer; color: var(--ink-soft);
     border-bottom: 3px solid transparent; font-weight: 600;
   }
   .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  #bar-right {
+    margin-left: auto; display: flex; align-items: center; gap: 2px;
+  }
+  #bar-right .mini-btn {
+    background: transparent; border: none; padding: 4px 6px;
+    font-size: 14px; cursor: pointer; color: var(--ink); border-radius: 5px;
+  }
+  #bar-right .mini-btn:hover { background: var(--bg); }
+  #bar-right .mini-month {
+    font-size: 12px; font-weight: 700; min-width: 50px; text-align: center;
+  }
+  .tools-toggle {
+    padding: 4px 10px; border: 1px solid var(--accent); background: transparent;
+    color: var(--accent); font-family: inherit; font-size: 12px;
+    font-weight: 600; cursor: pointer; border-radius: 5px; margin-left: 4px;
+  }
+  .tools-toggle:hover { background: var(--bg); }
   /* 工具列 */
   .palette {
     background: var(--surface); border-bottom: 1px solid var(--line);
     padding: 9px 18px; display: flex; align-items: center; gap: 8px;
     flex-wrap: wrap; flex-shrink: 0;
-  }
-  /* 極薄展開列(永遠顯示;含月份切換 + 展開按鈕) */
-  .tools-bar {
-    background: var(--surface); border-bottom: 1px solid var(--line);
-    padding: 3px 8px; display: flex; align-items: center;
-    gap: 4px; flex-shrink: 0;
-  }
-  .tools-bar .mini-btn {
-    background: transparent; border: none; padding: 4px 8px;
-    font-size: 14px; cursor: pointer; color: var(--ink);
-    border-radius: 5px;
-  }
-  .tools-bar .mini-btn:hover { background: var(--bg); }
-  .tools-bar .mini-month {
-    font-size: 13px; font-weight: 700; min-width: 78px; text-align: center;
-  }
-  .tools-toggle {
-    flex: 1; padding: 4px 0; border: none; background: transparent;
-    color: var(--accent); font-family: inherit; font-size: 12px;
-    font-weight: 600; cursor: pointer; border-radius: 5px;
   }
   .tools-toggle:hover { background: var(--bg); }
   .palette .hint { font-size: 12px; color: var(--ink-soft); margin-right: 4px; }
@@ -387,18 +389,19 @@
     </div>
   </header>
 
-  <div id="tabs">
-    <button class="tab active" data-tab="mine">我的面板</button>
-    <button class="tab" data-tab="shift">勤務預定表</button>
-    <button class="tab" data-tab="task">任務安排表</button>
-  </div>
-
-  <!-- 極薄展開列(永遠顯示;收合時顯示月份切換 + 展開按鈕) -->
-  <div class="tools-bar" id="tools-bar" style="display:none">
-    <button class="mini-btn" id="mini-prev">‹</button>
-    <span class="mini-month" id="mini-month"></span>
-    <button class="mini-btn" id="mini-next">›</button>
-    <button class="tools-toggle" id="tools-toggle">▼ 展開選單</button>
+  <!-- 主橫幅:分頁 + 月份 + 展開選單,全部一條 -->
+  <div id="master-bar">
+    <div id="tabs">
+      <button class="tab active" data-tab="mine">我的面板</button>
+      <button class="tab" data-tab="shift">勤務</button>
+      <button class="tab" data-tab="task">任務</button>
+    </div>
+    <div id="bar-right" style="display:none">
+      <button class="mini-btn" id="mini-prev">‹</button>
+      <span class="mini-month" id="mini-month"></span>
+      <button class="mini-btn" id="mini-next">›</button>
+      <button class="tools-toggle" id="tools-toggle">▼ 選單</button>
+    </div>
   </div>
 
   <!-- 勤務工具列(預設收合) -->
@@ -651,15 +654,15 @@ function switchTab(tab){
   document.getElementById("mine-view").style.display =
     tab === "mine" ? "block" : "none";
 
-  // 我的面板分頁:header 永遠展開、tools-bar 隱藏
-  // 勤務/任務分頁:依 toolsExpanded 狀態決定
+  // 主橫幅右側(月份切換 + 展開選單按鈕)
+  // - 勤務/任務分頁:顯示;header 依 toolsExpanded
+  // - 我的面板分頁:右側完全隱藏,header 永遠展開
   const onShiftOrTask = (tab === "shift" || tab === "task");
   if (onShiftOrTask) {
-    document.getElementById("tools-bar").style.display = "flex";
+    document.getElementById("bar-right").style.display = "flex";
     document.getElementById("main-header").style.display = toolsExpanded ? "flex" : "none";
   } else {
-    // 我的面板:回到「展開」狀態,讓使用者看得到全部
-    document.getElementById("tools-bar").style.display = "none";
+    document.getElementById("bar-right").style.display = "none";
     document.getElementById("main-header").style.display = "flex";
   }
   document.getElementById("shift-palette").style.display =
@@ -973,7 +976,7 @@ document.getElementById("shift-show-time").onclick = () => {
 let toolsExpanded = false;
 function setToolsExpanded(open){
   toolsExpanded = open;
-  document.getElementById("tools-toggle").textContent = open ? "▲ 收起選單" : "▼ 展開選單";
+  document.getElementById("tools-toggle").textContent = open ? "▲ 收起" : "▼ 選單";
   // 主標頭(系統名稱、姓名、月份切換、登出)
   document.getElementById("main-header").style.display = open ? "flex" : "none";
   // 工具列依當前分頁決定顯示哪一張
