@@ -642,10 +642,11 @@ async function loadMonth(){
   if (!sres.error) for (const row of sres.data)
     shiftLatest[row.entity_id + "|" + row.work_date] = row.value;
 
-  // 任務（新表：每筆任務一列）
+  // 任務（新表：每筆任務一列；過濾掉已撤銷）
   const tres = await sb.from("task")
     .select("id,entity_id,work_date,content,status,created_at")
     .gte("work_date", first).lte("work_date", last)
+    .neq("status", "已撤銷")
     .order("created_at", { ascending: true });
   tasksByCell = {};
   if (!tres.error) for (const row of tres.data) {
@@ -985,10 +986,11 @@ async function openTaskListModal(entityId, date){
     "任務清單 — " + (person ? person.name : "");
   document.getElementById("tlm-sub").textContent = date;
 
-  // 重新從資料庫拉這格的任務（確保新鮮）
+  // 重新從資料庫拉這格的任務（過濾已撤銷）
   const { data, error } = await sb.from("task")
     .select("id,content,status,created_at,created_by")
     .eq("entity_id", entityId).eq("work_date", date)
+    .neq("status", "已撤銷")
     .order("created_at", { ascending: true });
   if (error) { showStatus("讀取失敗：" + error.message, true); return; }
 
@@ -1010,6 +1012,7 @@ function renderTaskList(){
     box.innerHTML = "<div class='tasklist-empty'>還沒有任務</div>";
     return;
   }
+  const isAdmin = me.role === "admin";
   for (const t of tlmContext.tasks) {
     const stt = taskStatusMap[t.status];
     const stColor = stt ? stt.color : "#e6e3d4";
@@ -1020,19 +1023,51 @@ function renderTaskList(){
       <span class="tl-status" style="background:${stColor};color:${textColorFor(stColor)}">
         ${stt ? stt.label : t.status}
       </span>
+      ${isAdmin ? '<button class="tl-del" title="刪除此任務" style="font-family:inherit;font-size:12px;padding:3px 8px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:#c0392b;cursor:pointer;">✕</button>' : ''}
     `;
     div.querySelector(".tl-status").onclick = () => cycleTaskStatus(t);
+    if (isAdmin) {
+      div.querySelector(".tl-del").onclick = () => deleteTask(t);
+    }
     box.appendChild(div);
   }
 }
 
-/* 點狀態標籤 = 循環切換狀態（待辦 → 進行中 → 完成 → 待辦） */
+/* 管理者刪除任務（實際是改狀態為「已撤銷」） */
+async function deleteTask(task){
+  if (!confirm("確定刪除這筆任務？\n\n" + task.content + "\n\n（資料庫紀錄仍會保留，但畫面上會移除。）")) return;
+
+  const { error } = await sb.from("task")
+    .update({ status: "已撤銷", updated_at: new Date().toISOString(), updated_by: me.email })
+    .eq("id", task.id);
+  if (error) { showStatus("刪除失敗：" + error.message, true); return; }
+  await sb.from("task_log").insert({
+    task_id: task.id, field: "status", value: "已撤銷", created_by: me.email
+  });
+
+  // 從本地清單移除
+  if (tlmContext) {
+    tlmContext.tasks = tlmContext.tasks.filter(x => x.id !== task.id);
+    renderTaskList();
+  }
+  const k = task.entity_id ? (task.entity_id + "|" + task.work_date)
+                            : (tlmContext.entityId + "|" + tlmContext.date);
+  if (tasksByCell[k]) {
+    tasksByCell[k] = tasksByCell[k].filter(x => x.id !== task.id);
+  }
+  if (currentTab === "task" && tlmContext) {
+    repaintTaskCell(tlmContext.entityId, tlmContext.date);
+  }
+  showStatus("已刪除");
+}
+
+/* 點狀態標籤 = 循環切換狀態（待辦 → 進行中 → 完成 → 待辦；不含「已撤銷」） */
 async function cycleTaskStatus(task){
   if (!tlmContext || !tlmContext.canEdit) {
     showStatus("無權限修改", true); return;
   }
-  // 找下一個狀態
-  const codes = taskStatuses.map(s => s.code);
+  // 找下一個狀態（排除「已撤銷」——它是刪除用，不在循環裡）
+  const codes = taskStatuses.map(s => s.code).filter(c => c !== "已撤銷");
   const idx = codes.indexOf(task.status);
   const next = codes[(idx + 1) % codes.length];
 
@@ -1219,11 +1254,11 @@ async function renderMyPanel(){
   const view = document.getElementById("mine-view");
   view.innerHTML = "<div class='loading'>載入中…</div>";
 
-  // 從資料庫查「我所有未完成的任務」（不限月份）
+  // 從資料庫查「我所有未完成的任務」（不限月份；排除已撤銷）
   const { data, error } = await sb.from("task")
     .select("id,work_date,content,status,created_at")
     .eq("entity_id", me.id)
-    .neq("status", "完成")
+    .not("status", "in", "(完成,已撤銷)")
     .order("work_date", { ascending: true });
 
   if (error) {
@@ -1292,8 +1327,8 @@ async function renderMyPanel(){
 function taskRowHtml(t){
   const stt = taskStatusMap[t.status] || { color: "#e6e3d4", label: t.status };
   const isDone = t.status === "完成";
-  // 算下一個狀態
-  const codes = taskStatuses.map(s => s.code);
+  // 算下一個狀態（排除「已撤銷」）
+  const codes = taskStatuses.map(s => s.code).filter(c => c !== "已撤銷");
   const idx = codes.indexOf(t.status);
   const next = codes[(idx + 1) % codes.length];
   return `
