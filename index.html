@@ -405,6 +405,9 @@
     <button class="chip-btn mode-btn" id="shift-select-mode">批次選取</button>
     <span id="shift-buttons"></span>
     <button class="chip-btn mode-btn" id="shift-show-time">⏱ 修改時間</button>
+    <button class="chip-btn" id="export-csv-btn">📤 匯出 CSV</button>
+    <button class="chip-btn" id="import-csv-btn" style="display:none">📥 匯入 CSV</button>
+    <input type="file" id="csv-file-input" accept=".csv" style="display:none">
     <button class="chip-btn" id="shift-settings-btn" style="display:none">⚙ 班別設定</button>
     <button class="chip-btn" id="roster-order-btn" style="display:none">⚙ 人員排序</button>
     <span class="hint" id="shift-hint">點格子可直接設定班別</span>
@@ -502,6 +505,22 @@
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
       <button id="ro-save" style="font-family:inherit;font-size:13px;padding:8px 12px;border-radius:7px;cursor:pointer;border:1px solid var(--accent);background:var(--accent);color:#fff;">儲存排序</button>
       <button id="ro-close" style="font-family:inherit;font-size:14px;padding:8px 16px;border-radius:7px;cursor:pointer;border:1px solid var(--line);background:var(--surface);">關閉</button>
+    </div>
+  </div>
+</div>
+
+<div id="import-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:60;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--surface);border-radius:12px;padding:18px;width:100%;max-width:440px;max-height:80vh;display:flex;flex-direction:column;">
+    <h3 style="font-size:16px;margin-bottom:4px;">匯入班別資料</h3>
+    <div style="font-size:12px;color:var(--ink-soft);margin-bottom:14px;">已自動配對系統中的人員。請勾選要套用匯入資料的人員（可單獨匯入特定幾個人）。</div>
+    <div style="display:flex;gap:8px;margin-bottom:8px;">
+      <button id="import-sel-all" class="chip-btn" style="padding:4px 8px;font-size:12px;">全選</button>
+      <button id="import-sel-none" class="chip-btn" style="padding:4px 8px;font-size:12px;">全不選</button>
+    </div>
+    <div id="import-list" style="flex:1;overflow:auto;margin-bottom:14px;border:1px solid var(--line);border-radius:7px;padding:8px;display:flex;flex-direction:column;gap:6px;"></div>
+    <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;">
+      <button id="import-close" style="font-family:inherit;font-size:14px;padding:8px 16px;border-radius:7px;cursor:pointer;border:1px solid var(--line);background:var(--surface);">取消</button>
+      <button id="import-save" class="primary" style="font-family:inherit;font-size:13px;padding:8px 16px;border-radius:7px;cursor:pointer;border:1px solid var(--accent);background:var(--accent);color:#fff;">確認匯入</button>
     </div>
   </div>
 </div>
@@ -611,10 +630,11 @@ async function enterApp(session){
   const now = new Date();
   viewYear = now.getFullYear(); viewMonth = now.getMonth() + 1;
 
-  // 管理者才能看到「班別設定」「人員排序」按鈕
+  // 管理者才能看到「班別設定」「人員排序」及「匯入」
   if (me.role === "admin") {
     document.getElementById("shift-settings-btn").style.display = "inline-block";
     document.getElementById("roster-order-btn").style.display = "inline-block";
+    document.getElementById("import-csv-btn").style.display = "inline-block";
   }
 
   await loadMonth();
@@ -648,8 +668,6 @@ function switchTab(tab){
     tab === "mine" ? "block" : "none";
 
   // 主橫幅右側(月份切換 + 展開選單按鈕)
-  // - 勤務/任務分頁:顯示;header 依 toolsExpanded
-  // - 我的面板分頁:右側完全隱藏,header 永遠展開
   const onShiftOrTask = (tab === "shift" || tab === "task");
   if (onShiftOrTask) {
     document.getElementById("bar-right").style.display = "flex";
@@ -695,7 +713,7 @@ function renderShiftPalette(){
   }
 }
 
-/* =================== 載入當月（兩個分頁的資料一起載） =================== */
+/* =================== 載入當月 =================== */
 async function loadMonth(){
   document.getElementById("month-label").textContent = viewYear + " 年 " + viewMonth + " 月";
   document.getElementById("mini-month").textContent = viewYear + "/" + viewMonth;
@@ -707,7 +725,7 @@ async function loadMonth(){
   const first = dateStr(viewYear, viewMonth, 1);
   const last = dateStr(viewYear, viewMonth, nDays);
 
-  // 勤務（順帶記每格最後修改時間）
+  // 勤務
   const sres = await sb.from("shift_log")
     .select("entity_id,work_date,value,created_at")
     .gte("work_date", first).lte("work_date", last)
@@ -717,10 +735,10 @@ async function loadMonth(){
   if (!sres.error) for (const row of sres.data) {
     const k = row.entity_id + "|" + row.work_date;
     shiftLatest[k] = row.value;
-    shiftLatestTime[k] = row.created_at;  // 因為按時間升冪,最後一筆就是最新
+    shiftLatestTime[k] = row.created_at;
   }
 
-  // 任務（新表：每筆任務一列；過濾掉已撤銷）
+  // 任務
   const tres = await sb.from("task")
     .select("id,entity_id,work_date,content,status,created_at")
     .gte("work_date", first).lte("work_date", last)
@@ -741,13 +759,12 @@ async function loadMonth(){
   else renderTable();
 }
 
-/* =================== 繪製表格（依目前分頁） =================== */
+/* =================== 繪製表格 =================== */
 function renderTable(){
   const wrap = document.getElementById("table-wrap");
   const nDays = daysInMonth(viewYear, viewMonth);
   const weekNames = ["日","一","二","三","四","五","六"];
 
-  // 今天（只有檢視的年月正好是這個月，才標示）
   const today = new Date();
   const todayStr = (today.getFullYear() === viewYear && today.getMonth() + 1 === viewMonth)
     ? dateStr(viewYear, viewMonth, today.getDate()) : null;
@@ -784,27 +801,20 @@ function renderTable(){
   if (currentTab === "shift") bindShiftEvents();
   else bindTaskEvents();
 
-  // 開啟時自動捲到「我的列 × 今天那欄」
   scrollToMyRow();
   scrollToTodayColumn();
 }
 
-/* 捲動定位到使用者自己那一列（直向） */
 function scrollToMyRow(){
   const myRow = document.querySelector("tr.is-mine");
-  if (myRow) {
-    myRow.scrollIntoView({ block: "center", behavior: "auto" });
-  }
+  if (myRow) myRow.scrollIntoView({ block: "center", behavior: "auto" });
 }
 
-/* 捲動定位到今天那欄（橫向：把今天放在畫面偏左中） */
 function scrollToTodayColumn(){
   const wrap = document.getElementById("table-wrap");
   const todayCell = document.querySelector("td.today-col");
   if (!wrap || !todayCell) return;
-  // 計算今天那欄在表格容器內的位置
   const cellLeft = todayCell.offsetLeft;
-  // 姓名欄是 sticky 黏在左邊；扣掉它的寬度後，把今天放到容器內 1/4 處
   const nameCol = document.querySelector("td.cell-name");
   const nameW = nameCol ? nameCol.offsetWidth : 80;
   const target = cellLeft - nameW - Math.floor(wrap.clientWidth * 0.25);
@@ -819,8 +829,6 @@ function shiftCellHtml(entityId, ds, canEdit, isToday){
   const bg = st ? st.color : "#ffffff";
   const label = (val === "未排") ? "" : (st ? st.label.replace(/班$/,"") : val);
 
-  // 內容：開啟「修改時間」模式時 → 用時間取代班別文字（背景色保留）
-  //                關閉時 → 顯示班別文字
   let inner = label;
   if (showShiftTime && shiftLatestTime[k]) {
     inner = "<div style='font-size:10px;font-weight:600;line-height:1.15;'>" +
@@ -834,7 +842,6 @@ function shiftCellHtml(entityId, ds, canEdit, isToday){
          ";color:" + textColorFor(bg) + "'>" + inner + "</td>";
 }
 
-/* 格式化時間：拆成日期 5/20 與時間 16:30 兩部分 */
 function formatShortDate(iso){
   const d = new Date(iso);
   return (d.getMonth() + 1) + "/" + d.getDate();
@@ -844,7 +851,7 @@ function formatShortClock(iso){
   return String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
 }
 
-/* ---------- 任務格子（顯示多筆摘要） ---------- */
+/* ---------- 任務格子 ---------- */
 function taskCellHtml(entityId, ds, canEdit, isToday){
   const tasks = tasksByCell[entityId + "|" + ds] || [];
   let inner = "";
@@ -871,15 +878,11 @@ function escapeHtml(s){
     ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
 }
 
-/* =================== 矩形範圍計算（起點×終點 → 中間整片格子）=================== */
-/* 回傳 [{entity, date}, ...]，涵蓋兩格之間的「人 × 日期」矩形 */
 function rectRange(a, b){
-  // 人員：用 roster 的順序定出範圍
   const iA = roster.findIndex(p => p.id === a.entity);
   const iB = roster.findIndex(p => p.id === b.entity);
   if (iA < 0 || iB < 0) return [];
   const loP = Math.min(iA, iB), hiP = Math.max(iA, iB);
-  // 日期：字串比較即可（YYYY-MM-DD）
   const loD = a.date < b.date ? a.date : b.date;
   const hiD = a.date < b.date ? b.date : a.date;
   const cells = [];
@@ -906,14 +909,12 @@ function onShiftCellClick(td){
   if (shiftSelectMode) {
     const cell = { entity: td.dataset.entity, date: td.dataset.date };
     if (!shiftRectAnchor) {
-      // 第一次點 = 起點
       clearSelection();
       shiftRectAnchor = cell;
       toggleCell(td, true);
       updateSelCount();
       showStatus("已選起點，再點另一格框出範圍");
     } else {
-      // 第二次點 = 終點，框出矩形
       const cells = rectRange(shiftRectAnchor, cell);
       clearSelection();
       for (const c of cells) {
@@ -925,14 +926,12 @@ function onShiftCellClick(td){
       updateSelCount();
     }
   } else {
-    // 一般模式：點一格 = 直接選這一格（再點班別套用）
     clearSelection();
     toggleCell(td, true);
     updateSelCount();
   }
 }
 
-/* 切換批次選取模式 */
 function setShiftSelectMode(on){
   shiftSelectMode = on;
   const btn = document.getElementById("shift-select-mode");
@@ -955,7 +954,6 @@ document.getElementById("shift-select-mode").onclick = () => {
   setShiftSelectMode(!shiftSelectMode);
 };
 
-/* 顯示修改時間切換 */
 document.getElementById("shift-show-time").onclick = () => {
   showShiftTime = !showShiftTime;
   const btn = document.getElementById("shift-show-time");
@@ -964,15 +962,11 @@ document.getElementById("shift-show-time").onclick = () => {
   if (currentTab === "shift") renderTable();
 };
 
-/* 標頭+工具列展開/收合(統一一個開關;收合時 header 也整個藏起來,
-   只剩薄薄一條 tools-bar 顯示月份和展開按鈕) */
 let toolsExpanded = false;
 function setToolsExpanded(open){
   toolsExpanded = open;
   document.getElementById("tools-toggle").textContent = open ? "▲ 收起" : "▼ 選單";
-  // 主標頭(系統名稱、姓名、月份切換、登出)
   document.getElementById("main-header").style.display = open ? "flex" : "none";
-  // 工具列依當前分頁決定顯示哪一張
   document.getElementById("shift-palette").style.display =
     (currentTab === "shift" && open) ? "flex" : "none";
   document.getElementById("task-palette").style.display =
@@ -980,7 +974,6 @@ function setToolsExpanded(open){
 }
 document.getElementById("tools-toggle").onclick = () => setToolsExpanded(!toolsExpanded);
 
-/* tools-bar 上的迷你月份切換(收合狀態下用) */
 document.getElementById("mini-prev").onclick = () => {
   viewMonth--; if (viewMonth < 1) { viewMonth = 12; viewYear--; }
   loadMonth();
@@ -990,7 +983,6 @@ document.getElementById("mini-next").onclick = () => {
   loadMonth();
 };
 
-/* 依視窗寬度設定預設(手機收合、電腦展開) */
 function initToolsBarDefaults(){
   const isMobile = window.innerWidth <= 600;
   setToolsExpanded(!isMobile);
@@ -1026,7 +1018,7 @@ async function applyShiftToSelection(code){
   const keys = Array.from(selectedCells);
   for (const key of keys) {
     shiftLatest[key] = code;
-    shiftLatestTime[key] = nowIso;  // 剛剛寫入,時間就是現在
+    shiftLatestTime[key] = nowIso;
     const [eid, ds] = key.split("|");
     const td = document.querySelector(
       "td.shift-cell[data-entity='" + eid + "'][data-date='" + ds + "']");
@@ -1034,7 +1026,6 @@ async function applyShiftToSelection(code){
       const st = shiftMap[code];
       td.style.background = st.color; td.style.color = textColorFor(st.color);
       const label = (code === "未排") ? "" : st.label.replace(/班$/,"");
-      // 開啟時間模式 → 顯示時間取代班別文字;關閉 → 顯示班別文字
       if (showShiftTime) {
         td.innerHTML = "<div style='font-size:10px;font-weight:600;line-height:1.15;'>" +
                        formatShortDate(nowIso) + "<br>" +
@@ -1049,9 +1040,154 @@ async function applyShiftToSelection(code){
   showStatus("已儲存 " + keys.length + " 格");
 }
 
+/* =================== CSV 匯出 / 匯入 =================== */
+
+// 匯出當前月份班別
+document.getElementById("export-csv-btn").onclick = () => {
+  const nDays = daysInMonth(viewYear, viewMonth);
+  let csv = "\uFEFF"; // 加入 BOM 讓 Excel 正確解析 UTF-8
+  
+  // 第一行標題: 姓名, YYYY-MM-01, YYYY-MM-02...
+  let header = ["姓名"];
+  for(let d = 1; d <= nDays; d++) {
+    header.push(dateStr(viewYear, viewMonth, d));
+  }
+  csv += header.join(",") + "\n";
+
+  // 資料行: 針對 roster 每個人輸出當月最新班別
+  for (const p of roster) {
+    let row = [p.name];
+    for(let d = 1; d <= nDays; d++) {
+      const k = p.id + "|" + dateStr(viewYear, viewMonth, d);
+      row.push(shiftLatest[k] || "未排");
+    }
+    csv += row.join(",") + "\n";
+  }
+
+  // 產生並下載檔案
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `勤務表_${viewYear}_${pad(viewMonth)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
+// 匯入 CSV 邏輯
+let pendingImportData = []; // 暫存解析後的資料供彈窗使用
+
+document.getElementById("import-csv-btn").onclick = () => {
+  document.getElementById("csv-file-input").click();
+};
+
+document.getElementById("csv-file-input").onchange = (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    const text = evt.target.result;
+    const lines = text.split("\n").map(l => l.trim()).filter(l => l);
+    if(lines.length < 2) { showStatus("CSV 格式錯誤或無資料", true); return; }
+    
+    // 找出具有日期格式 (YYYY-MM-DD) 的直行
+    const headers = lines[0].split(",");
+    const dateCols = [];
+    for(let i = 1; i < headers.length; i++) {
+       if(headers[i].match(/^\d{4}-\d{2}-\d{2}$/)) {
+          dateCols.push({ index: i, date: headers[i] });
+       }
+    }
+    if(dateCols.length === 0) { showStatus("CSV 找不到日期標題(如 YYYY-MM-DD)", true); return; }
+
+    pendingImportData = [];
+    for(let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(",");
+      const name = cols[0];
+      // 與系統資料庫的人員名單配對
+      const person = roster.find(p => p.name === name);
+      if(!person) continue; 
+      
+      const shifts = [];
+      for(const dc of dateCols) {
+         const val = cols[dc.index];
+         if(val) shifts.push({ date: dc.date, value: val });
+      }
+      pendingImportData.push({ id: person.id, name: person.name, shifts });
+    }
+    
+    if(pendingImportData.length === 0) { showStatus("CSV 內無可匹配的系統人員", true); return; }
+    
+    // 渲染選擇列表
+    const box = document.getElementById("import-list");
+    box.innerHTML = pendingImportData.map((p, idx) => `
+      <label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;">
+        <input type="checkbox" class="import-chk" value="${idx}" checked>
+        <span style="font-size:14px;font-weight:600;">${p.name}</span>
+        <span style="font-size:12px;color:var(--ink-soft);">(${p.shifts.length} 筆)</span>
+      </label>
+    `).join("");
+    
+    document.getElementById("import-modal").style.display = "flex";
+  };
+  reader.readAsText(file);
+  e.target.value = ""; // 重設，允許重複選同個檔案
+};
+
+document.getElementById("import-sel-all").onclick = () => {
+  document.querySelectorAll(".import-chk").forEach(cb => cb.checked = true);
+};
+document.getElementById("import-sel-none").onclick = () => {
+  document.querySelectorAll(".import-chk").forEach(cb => cb.checked = false);
+};
+document.getElementById("import-close").onclick = () => {
+  document.getElementById("import-modal").style.display = "none";
+  pendingImportData = [];
+};
+
+// 儲存勾選的匯入資料
+document.getElementById("import-save").onclick = async () => {
+  const selectedIndices = Array.from(document.querySelectorAll(".import-chk:checked")).map(cb => parseInt(cb.value));
+  if(selectedIndices.length === 0) { showStatus("請至少勾選一位人員", true); return; }
+  
+  const rowsToInsert = [];
+  for(const idx of selectedIndices) {
+    const p = pendingImportData[idx];
+    for(const s of p.shifts) {
+      rowsToInsert.push({ entity_id: p.id, work_date: s.date, value: s.value, created_by: me.email });
+    }
+  }
+  
+  if(rowsToInsert.length === 0) return;
+  
+  document.getElementById("import-save").textContent = "匯入中...";
+  document.getElementById("import-save").disabled = true;
+
+  // 切割批次寫入資料庫以防請求過大
+  const batchSize = 1000;
+  let okCount = 0;
+  for(let i = 0; i < rowsToInsert.length; i += batchSize) {
+     const batch = rowsToInsert.slice(i, i + batchSize);
+     const { error } = await sb.from("shift_log").insert(batch);
+     if(!error) okCount += batch.length;
+  }
+
+  document.getElementById("import-save").textContent = "確認匯入";
+  document.getElementById("import-save").disabled = false;
+  
+  if(okCount > 0) {
+     showStatus("成功匯入 " + okCount + " 筆班別紀錄");
+     loadMonth(); // 重新載入並渲染畫面
+  } else {
+     showStatus("匯入失敗", true);
+  }
+  document.getElementById("import-modal").style.display = "none";
+  pendingImportData = [];
+};
+
 /* =================== 任務：互動 =================== */
 let taskSelected = new Set();
-let taskRectAnchor = null;  // 任務矩形框選起點
+let taskRectAnchor = null;
 
 function clearTaskSelection(){
   taskSelected.clear();
@@ -1078,10 +1214,8 @@ function bindTaskEvents(){
   });
 }
 
-/* ============ 任務格子點擊（多筆版） ============ */
 function onTaskCellClick(td){
   if (taskSelectMode) {
-    // 批次選取模式：矩形框選
     const cell = { entity: td.dataset.entity, date: td.dataset.date };
     if (!taskRectAnchor) {
       clearTaskSelection();
@@ -1101,12 +1235,10 @@ function onTaskCellClick(td){
       updateTaskSelCount();
     }
   } else {
-    // 一般模式：開啟「這格的任務清單」
     openTaskListModal(td.dataset.entity, td.dataset.date);
   }
 }
 
-/* 切換任務批次選取模式（僅 admin） */
 function setTaskSelectMode(on){
   taskSelectMode = on;
   const btn = document.getElementById("task-select-mode");
@@ -1133,13 +1265,12 @@ document.getElementById("task-select-mode").onclick = () => {
   setTaskSelectMode(!taskSelectMode);
 };
 
-/* 管理者：點批次指派 → 開「批次指派彈窗」 */
 document.getElementById("task-assign-btn").onclick = () => {
   if (taskSelected.size === 0) { showStatus("請先框選要指派的格子", true); return; }
   openBatchAssignModal(Array.from(taskSelected));
 };
 
-/* ============ A. 任務清單面板（點格子開啟） ============ */
+/* ============ A. 任務清單面板 ============ */
 async function openTaskListModal(entityId, date){
   const person = roster.find(p => p.id === entityId);
   const isAdmin = me.role === "admin";
@@ -1150,7 +1281,6 @@ async function openTaskListModal(entityId, date){
     "任務清單 — " + (person ? person.name : "");
   document.getElementById("tlm-sub").textContent = date;
 
-  // 重新從資料庫拉這格的任務（過濾已撤銷）
   const { data, error } = await sb.from("task")
     .select("id,content,status,created_at,created_by")
     .eq("entity_id", entityId).eq("work_date", date)
@@ -1161,7 +1291,6 @@ async function openTaskListModal(entityId, date){
   tlmContext = { entityId, date, tasks: data || [], canEdit, isAdmin };
   renderTaskList();
 
-  // 新增區只給可編輯者看到
   document.getElementById("tlm-add-area").style.display = canEdit ? "block" : "none";
   document.getElementById("tlm-add-btn").style.display = canEdit ? "inline-block" : "none";
 
@@ -1197,7 +1326,6 @@ function renderTaskList(){
   }
 }
 
-/* 管理者刪除任務（實際是改狀態為「已撤銷」） */
 async function deleteTask(task){
   if (!confirm("確定刪除這筆任務？\n\n" + task.content + "\n\n（資料庫紀錄仍會保留，但畫面上會移除。）")) return;
 
@@ -1209,7 +1337,6 @@ async function deleteTask(task){
     task_id: task.id, field: "status", value: "已撤銷", created_by: me.email
   });
 
-  // 從本地清單移除
   if (tlmContext) {
     tlmContext.tasks = tlmContext.tasks.filter(x => x.id !== task.id);
     renderTaskList();
@@ -1225,17 +1352,14 @@ async function deleteTask(task){
   showStatus("已刪除");
 }
 
-/* 點狀態標籤 = 循環切換狀態（待辦 → 進行中 → 完成 → 待辦；不含「已撤銷」） */
 async function cycleTaskStatus(task){
   if (!tlmContext || !tlmContext.canEdit) {
     showStatus("無權限修改", true); return;
   }
-  // 找下一個狀態（排除「已撤銷」——它是刪除用，不在循環裡）
   const codes = taskStatuses.map(s => s.code).filter(c => c !== "已撤銷");
   const idx = codes.indexOf(task.status);
   const next = codes[(idx + 1) % codes.length];
 
-  // 改為「完成」要打字確認
   if (next === "完成") {
     const typed = prompt("改為「完成」請輸入「完成」二字確認：");
     if (typed !== "完成") { showStatus("確認字串不符，已取消", true); return; }
@@ -1246,25 +1370,21 @@ async function cycleTaskStatus(task){
     .eq("id", task.id);
   if (error) { showStatus("儲存失敗：" + error.message, true); return; }
 
-  // 記錄歷史
   await sb.from("task_log").insert({
     task_id: task.id, field: "status", value: next, created_by: me.email
   });
 
   task.status = next;
-  // 同步更新 tasksByCell
   const k = tlmContext.entityId + "|" + tlmContext.date;
   if (tasksByCell[k]) {
     const i = tasksByCell[k].findIndex(x => x.id === task.id);
     if (i >= 0) tasksByCell[k][i].status = next;
   }
   renderTaskList();
-  // 同步更新主畫面格子摘要
   if (currentTab === "task") repaintTaskCell(tlmContext.entityId, tlmContext.date);
   showStatus("已更新為「" + next + "」");
 }
 
-/* 新增任務 */
 document.getElementById("tlm-add-btn").onclick = async () => {
   if (!tlmContext || !tlmContext.canEdit) return;
   const content = document.getElementById("tlm-new-content").value.trim();
@@ -1280,7 +1400,6 @@ document.getElementById("tlm-add-btn").onclick = async () => {
   }).select().single();
   if (error) { showStatus("新增失敗：" + error.message, true); return; }
 
-  // 同步本地
   tlmContext.tasks.push(data);
   const k = tlmContext.entityId + "|" + tlmContext.date;
   if (!tasksByCell[k]) tasksByCell[k] = [];
@@ -1297,12 +1416,10 @@ document.getElementById("tlm-close").onclick = () => {
   tlmContext = null;
 };
 
-/* 重畫單一任務格子（摘要） */
 function repaintTaskCell(entityId, date){
   const td = document.querySelector(
     "td.task-cell[data-entity='" + entityId + "'][data-date='" + date + "']");
   if (!td) return;
-  // 用 outerHTML 替換
   const isMine = entityId === me.id;
   const canEdit = isMine || me.role === "admin";
   const wd = new Date(date).getDay();
@@ -1312,7 +1429,6 @@ function repaintTaskCell(entityId, date){
     ? dateStr(viewYear, viewMonth, today.getDate()) : null;
   const isToday = date === todayStr;
   td.outerHTML = taskCellHtml(entityId, date, canEdit, isToday);
-  // 重綁事件
   const newTd = document.querySelector(
     "td.task-cell[data-entity='" + entityId + "'][data-date='" + date + "']");
   if (newTd && newTd.dataset.edit === "1") {
@@ -1321,19 +1437,17 @@ function repaintTaskCell(entityId, date){
 }
 
 /* ============ B. 批次指派彈窗 ============ */
-let bamMode = null;  // 'selection' = 用已框選的格子；'all-range' = 全部人 × 日期區間
+let bamMode = null; 
 let bamSelectionKeys = null;
 
 function openBatchAssignModal(selectionKeys){
   bamMode = "selection";
   bamSelectionKeys = selectionKeys;
 
-  // 從已選格子推出預設日期範圍
   const dates = selectionKeys.map(k => k.split("|")[1]).sort();
   document.getElementById("bam-from").value = dates[0];
   document.getElementById("bam-to").value = dates[dates.length - 1];
 
-  // 推出對象資訊
   const entityIds = new Set(selectionKeys.map(k => k.split("|")[0]));
   document.getElementById("bam-sub").textContent =
     "已選 " + selectionKeys.length + " 格（" + entityIds.size + " 人 × " +
@@ -1345,7 +1459,6 @@ function openBatchAssignModal(selectionKeys){
   document.getElementById("batch-assign-modal").style.display = "flex";
 }
 
-/* 「指派給全部人」按鈕 */
 document.getElementById("bam-all-btn").onclick = () => {
   bamMode = "all-range";
   document.getElementById("bam-target-info").textContent =
@@ -1367,7 +1480,6 @@ document.getElementById("bam-save").onclick = async () => {
     showStatus("日期範圍不正確", true); return;
   }
 
-  // 算出要指派的 (entity, date) 清單
   const targets = [];
   let entityIds = [];
   if (bamMode === "all-range") {
@@ -1375,7 +1487,6 @@ document.getElementById("bam-save").onclick = async () => {
   } else {
     entityIds = Array.from(new Set(bamSelectionKeys.map(k => k.split("|")[0])));
   }
-  // 日期列表
   const dates = [];
   const d1 = new Date(fromDate), d2 = new Date(toDate);
   for (let d = new Date(d1); d <= d2; d.setDate(d.getDate() + 1)) {
@@ -1397,7 +1508,6 @@ document.getElementById("bam-save").onclick = async () => {
   const { data, error } = await sb.from("task").insert(targets).select();
   if (error) { showStatus("指派失敗：" + error.message, true); return; }
 
-  // 更新本地
   for (const t of (data || [])) {
     const k = t.entity_id + "|" + t.work_date;
     if (!tasksByCell[k]) tasksByCell[k] = [];
@@ -1418,7 +1528,6 @@ async function renderMyPanel(){
   const view = document.getElementById("mine-view");
   view.innerHTML = "<div class='loading'>載入中…</div>";
 
-  // 從資料庫查「我所有未完成的任務」（不限月份；排除已撤銷）
   const { data, error } = await sb.from("task")
     .select("id,work_date,content,status,created_at")
     .eq("entity_id", me.id)
@@ -1431,7 +1540,6 @@ async function renderMyPanel(){
   }
   myOpenTasks = data || [];
 
-  // 同時查「最近 7 天內完成的」做為「最近已完成」區
   const recent = new Date();
   recent.setDate(recent.getDate() - 7);
   const recentStr = recent.toISOString().slice(0, 10);
@@ -1443,7 +1551,6 @@ async function renderMyPanel(){
     .order("work_date", { ascending: false });
   const recentDone = doneRes.data || [];
 
-  // 分組：過期、今天、未來
   const todayStr = new Date().toISOString().slice(0, 10);
   const overdue = myOpenTasks.filter(t => t.work_date < todayStr);
   const today_ = myOpenTasks.filter(t => t.work_date === todayStr);
@@ -1478,7 +1585,6 @@ async function renderMyPanel(){
   html += "</div>";
   view.innerHTML = html;
 
-  // 綁定點擊動作
   view.querySelectorAll(".mine-task .t-act-btn").forEach(btn => {
     btn.onclick = () => {
       const id = btn.dataset.id;
@@ -1491,7 +1597,6 @@ async function renderMyPanel(){
 function taskRowHtml(t){
   const stt = taskStatusMap[t.status] || { color: "#e6e3d4", label: t.status };
   const isDone = t.status === "完成";
-  // 算下一個狀態（排除「已撤銷」）
   const codes = taskStatuses.map(s => s.code).filter(c => c !== "已撤銷");
   const idx = codes.indexOf(t.status);
   const next = codes[(idx + 1) % codes.length];
@@ -1511,7 +1616,6 @@ function taskRowHtml(t){
 }
 
 async function cycleMyTask(id, next){
-  // 改為「完成」要打字確認
   if (next === "完成") {
     const typed = prompt("改為「完成」請輸入「完成」二字確認：");
     if (typed !== "完成") { showStatus("確認字串不符，已取消", true); return; }
@@ -1543,7 +1647,6 @@ document.getElementById("shift-settings-btn").onclick = openShiftSettings;
 document.getElementById("ss-close").onclick = closeShiftSettings;
 
 async function openShiftSettings(){
-  // 重新從資料庫拉一次（含已停用的，讓管理者可以重新啟用）
   const { data, error } = await sb.from("shift_type")
     .select("code,label,color,sort_order,active")
     .order("sort_order");
@@ -1553,7 +1656,6 @@ async function openShiftSettings(){
 }
 function closeShiftSettings(){
   document.getElementById("shift-settings-modal").style.display = "none";
-  // 關閉時重新載入畫面上的班別與當月資料，確保同步
   reloadShiftTypesAndRefresh();
 }
 
@@ -1616,7 +1718,6 @@ document.getElementById("ss-add-btn").onclick = async () => {
   showStatus("已新增：" + label);
   document.getElementById("ss-new-code").value = "";
   document.getElementById("ss-new-label").value = "";
-  // 重畫列表
   openShiftSettings();
 };
 
@@ -1627,7 +1728,6 @@ document.getElementById("ro-close").onclick = () => {
   document.getElementById("roster-order-modal").style.display = "none";
 };
 
-// 一鍵複製人員名單
 document.getElementById("ro-copy-btn").onclick = () => {
   const text = document.getElementById("ro-textarea").value;
   navigator.clipboard.writeText(text).then(() => {
@@ -1638,7 +1738,6 @@ document.getElementById("ro-copy-btn").onclick = () => {
 };
 
 async function openRosterOrder(){
-  // 拉所有在職人員
   const { data, error } = await sb.from("roster")
     .select("id,badge_no,name,display_order")
     .eq("active", true)
@@ -1646,20 +1745,16 @@ async function openRosterOrder(){
     .order("badge_no");
   if (error) { showStatus("讀取失敗:" + error.message, true); return; }
   
-  // 將查詢到的人員名單依序填入 textarea
   const names = (data || []).map(r => r.name).join("\n");
   document.getElementById("ro-textarea").value = names;
 
-  // 暫存目前的 roster 資料供儲存時比對使用
   document.getElementById("roster-order-modal")._currentRoster = data || [];
 
   document.getElementById("roster-order-modal").style.display = "flex";
 }
 
-// 儲存排序邏輯
 document.getElementById("ro-save").onclick = async () => {
   const text = document.getElementById("ro-textarea").value;
-  // 切割、去空白、過濾空行
   const pastedNames = text.split("\n").map(n => n.trim()).filter(n => n !== "");
 
   const currentRoster = document.getElementById("roster-order-modal")._currentRoster || [];
@@ -1670,7 +1765,6 @@ document.getElementById("ro-save").onclick = async () => {
   const processedIds = new Set();
   let orderCounter = 10;
 
-  // 1. 處理在 textarea 中有貼上的名字（忽略多出來或不存在的）
   for (const name of pastedNames) {
     const id = nameToId[name];
     if (id && !processedIds.has(id)) {
@@ -1680,7 +1774,6 @@ document.getElementById("ro-save").onclick = async () => {
     }
   }
 
-  // 2. 處理未被貼上的原有人員（將他們接續在後面，確保固有資料不遺失）
   for (const r of currentRoster) {
     if (!processedIds.has(r.id)) {
       updates.push({ id: r.id, display_order: orderCounter });
@@ -1688,7 +1781,6 @@ document.getElementById("ro-save").onclick = async () => {
     }
   }
 
-  // 執行更新
   document.getElementById("ro-save").textContent = "儲存中...";
   document.getElementById("ro-save").disabled = true;
 
@@ -1703,19 +1795,15 @@ document.getElementById("ro-save").onclick = async () => {
   document.getElementById("ro-save").disabled = false;
 
   showStatus("已更新 " + okCount + " 筆人員排序");
-  
-  // 更新後重新載入並重繪畫面
   reloadRosterAndRefresh();
 };
 
-/* 關閉或更新排序設定後, 重新載入主畫面 */
 async function reloadRosterAndRefresh(){
   const r = await sb.from("roster").select("id,badge_no,name,display_order")
     .eq("active", true)
     .order("display_order", { ascending: true, nullsFirst: false })
     .order("badge_no");
   roster = r.data || [];
-  // 主畫面重畫
   if (currentTab === "shift" || currentTab === "task") renderTable();
 }
 </script>
