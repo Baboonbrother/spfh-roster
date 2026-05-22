@@ -276,7 +276,7 @@
   }
   .ss-row.inactive { opacity: .5; }
 
-  /* 人員排序列表 */
+  /* 人員排序列表 (保留固有 CSS 類別) */
   .ro-row {
     display: flex; align-items: center; gap: 10px; padding: 8px 0;
     border-bottom: 1px solid var(--line);
@@ -363,7 +363,6 @@
 </head>
 <body>
 
-<!-- 登入 -->
 <div id="login-view">
   <div class="mark">勤</div>
   <div class="brand">SPFH · 勤務與任務系統</div>
@@ -373,7 +372,6 @@
   <p id="login-hint"></p>
 </div>
 
-<!-- 主畫面 -->
 <div id="app-view">
   <header id="main-header">
     <div>
@@ -389,7 +387,6 @@
     </div>
   </header>
 
-  <!-- 主橫幅:分頁 + 月份 + 展開選單,全部一條 -->
   <div id="master-bar">
     <div id="tabs">
       <button class="tab active" data-tab="mine">我的面板</button>
@@ -404,7 +401,6 @@
     </div>
   </div>
 
-  <!-- 勤務工具列(預設收合) -->
   <div class="palette" id="shift-palette" style="display:none">
     <button class="chip-btn mode-btn" id="shift-select-mode">批次選取</button>
     <span id="shift-buttons"></span>
@@ -415,7 +411,6 @@
     <span class="sel-count" id="sel-count"></span>
   </div>
 
-  <!-- 任務工具列(預設收合) -->
   <div class="palette" id="task-palette" style="display:none">
     <button class="chip-btn mode-btn" id="task-select-mode" style="display:none">批次選取</button>
     <button class="chip-btn" id="task-assign-btn" style="display:none;background:var(--accent);color:#fff">指派任務給已選格子</button>
@@ -427,13 +422,11 @@
     <div class="loading">載入中…</div>
   </div>
 
-  <!-- 我的面板 -->
   <div id="mine-view" style="flex:1;overflow:auto;padding:16px;background:var(--bg);">
     <div class="loading">載入中…</div>
   </div>
 </div>
 
-<!-- A. 多筆任務清單面板（點格子開這個） -->
 <div id="task-list-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:60;align-items:center;justify-content:center;padding:20px;">
   <div style="background:var(--surface);border-radius:12px;padding:18px;width:100%;max-width:480px;max-height:80vh;display:flex;flex-direction:column;">
     <h3 id="tlm-title" style="font-size:16px;margin-bottom:4px;">任務清單</h3>
@@ -453,7 +446,6 @@
   </div>
 </div>
 
-<!-- B. 批次指派彈窗（管理者用） -->
 <div id="batch-assign-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:60;align-items:center;justify-content:center;padding:20px;">
   <div style="background:var(--surface);border-radius:12px;padding:18px;width:100%;max-width:440px;">
     <h3 style="font-size:16px;margin-bottom:4px;">批次指派任務</h3>
@@ -482,7 +474,6 @@
   </div>
 </div>
 
-<!-- 班別設定彈窗（僅管理者） -->
 <div id="shift-settings-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:60;align-items:center;justify-content:center;padding:20px;">
   <div style="background:var(--surface);border-radius:12px;padding:18px;width:100%;max-width:480px;max-height:80vh;overflow:auto;">
     <h3 style="font-size:16px;margin-bottom:4px;">班別設定</h3>
@@ -500,14 +491,16 @@
   </div>
 </div>
 
-<!-- 人員排序設定彈窗(僅管理者) -->
 <div id="roster-order-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:60;align-items:center;justify-content:center;padding:20px;">
-  <div style="background:var(--surface);border-radius:12px;padding:18px;width:100%;max-width:440px;max-height:80vh;overflow:auto;">
-    <h3 style="font-size:16px;margin-bottom:4px;">人員顯示順序</h3>
-    <div style="font-size:12px;color:var(--ink-soft);margin-bottom:14px;">填數字決定顯示順序,小的在前。可填小數插隊(例如想把人插在 3 跟 4 之間,填 3.5)。修改會立即儲存。</div>
-    <div id="ro-list"></div>
+  <div style="background:var(--surface);border-radius:12px;padding:18px;width:100%;max-width:440px;max-height:80vh;display:flex;flex-direction:column;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+      <h3 style="font-size:16px;margin:0;">人員顯示順序</h3>
+      <button id="ro-copy-btn" class="chip-btn" style="padding:4px 8px;font-size:12px;">一鍵複製</button>
+    </div>
+    <div style="font-size:12px;color:var(--ink-soft);margin-bottom:14px;">請貼上新的人員名單（每行一個名字）。若貼入的人名不存在會自動忽略，未被貼入的原有人員將自動排在最後面。修改後請點擊儲存。</div>
+    <textarea id="ro-textarea" style="width:100%;flex:1;min-height:240px;font-family:inherit;font-size:14px;padding:8px;border:1px solid var(--line);border-radius:7px;resize:vertical;"></textarea>
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
-      <button id="ro-renumber" style="font-family:inherit;font-size:13px;padding:8px 12px;border-radius:7px;cursor:pointer;border:1px solid var(--line);background:var(--surface);">重新編號(改為 1, 2, 3...)</button>
+      <button id="ro-save" style="font-family:inherit;font-size:13px;padding:8px 12px;border-radius:7px;cursor:pointer;border:1px solid var(--accent);background:var(--accent);color:#fff;">儲存排序</button>
       <button id="ro-close" style="font-family:inherit;font-size:14px;padding:8px 16px;border-radius:7px;cursor:pointer;border:1px solid var(--line);background:var(--surface);">關閉</button>
     </div>
   </div>
@@ -1629,75 +1622,93 @@ document.getElementById("ss-add-btn").onclick = async () => {
 
 /* =================== 人員排序設定(僅 admin) =================== */
 document.getElementById("roster-order-btn").onclick = openRosterOrder;
+
 document.getElementById("ro-close").onclick = () => {
   document.getElementById("roster-order-modal").style.display = "none";
-  // 關閉時重新讀 roster、刷新主畫面
-  reloadRosterAndRefresh();
+};
+
+// 一鍵複製人員名單
+document.getElementById("ro-copy-btn").onclick = () => {
+  const text = document.getElementById("ro-textarea").value;
+  navigator.clipboard.writeText(text).then(() => {
+    showStatus("已複製人員名單");
+  }).catch(() => {
+    showStatus("複製失敗", true);
+  });
 };
 
 async function openRosterOrder(){
-  // 拉所有在職人員(含當前的 display_order)
+  // 拉所有在職人員
   const { data, error } = await sb.from("roster")
     .select("id,badge_no,name,display_order")
     .eq("active", true)
     .order("display_order", { ascending: true, nullsFirst: false })
     .order("badge_no");
   if (error) { showStatus("讀取失敗:" + error.message, true); return; }
-  renderRosterOrderList(data || []);
+  
+  // 將查詢到的人員名單依序填入 textarea
+  const names = (data || []).map(r => r.name).join("\n");
+  document.getElementById("ro-textarea").value = names;
+
+  // 暫存目前的 roster 資料供儲存時比對使用
+  document.getElementById("roster-order-modal")._currentRoster = data || [];
+
   document.getElementById("roster-order-modal").style.display = "flex";
 }
 
-function renderRosterOrderList(rows){
-  const box = document.getElementById("ro-list");
-  box.innerHTML = "";
-  for (const row of rows) {
-    const div = document.createElement("div");
-    div.className = "ro-row";
-    div.innerHTML = `
-      <input class="ro-order" type="number" step="0.5" value="${row.display_order ?? row.badge_no}">
-      <div class="ro-name">${escapeHtml(row.name)}</div>
-      <span class="ro-badge">番號 ${row.badge_no}</span>
-    `;
-    const input = div.querySelector(".ro-order");
-    input.onchange = async () => {
-      const v = parseFloat(input.value);
-      if (isNaN(v)) { showStatus("請填數字", true); input.value = row.display_order ?? row.badge_no; return; }
-      const { error } = await sb.from("roster")
-        .update({ display_order: v }).eq("id", row.id);
-      if (error) { showStatus("儲存失敗:" + error.message, true); return; }
-      row.display_order = v;
-      showStatus("已儲存:" + row.name + " → " + v);
-    };
-    box.appendChild(div);
+// 儲存排序邏輯
+document.getElementById("ro-save").onclick = async () => {
+  const text = document.getElementById("ro-textarea").value;
+  // 切割、去空白、過濾空行
+  const pastedNames = text.split("\n").map(n => n.trim()).filter(n => n !== "");
+
+  const currentRoster = document.getElementById("roster-order-modal")._currentRoster || [];
+  const nameToId = {};
+  currentRoster.forEach(r => { nameToId[r.name] = r.id; });
+
+  const updates = [];
+  const processedIds = new Set();
+  let orderCounter = 10;
+
+  // 1. 處理在 textarea 中有貼上的名字（忽略多出來或不存在的）
+  for (const name of pastedNames) {
+    const id = nameToId[name];
+    if (id && !processedIds.has(id)) {
+      updates.push({ id, display_order: orderCounter });
+      processedIds.add(id);
+      orderCounter += 10;
+    }
   }
-}
 
-/* 重新編號:把目前順序整理成 1, 2, 3... 整數 */
-document.getElementById("ro-renumber").onclick = async () => {
-  if (!confirm("把目前的順序重新整理成 1, 2, 3...?\n(只整理數字,實際順序不會改變。整理後留出間隔方便日後插隊。)")) return;
-  const { data, error } = await sb.from("roster")
-    .select("id,badge_no,display_order")
-    .eq("active", true)
-    .order("display_order", { ascending: true, nullsFirst: false })
-    .order("badge_no");
-  if (error) { showStatus("讀取失敗:" + error.message, true); return; }
+  // 2. 處理未被貼上的原有人員（將他們接續在後面，確保固有資料不遺失）
+  for (const r of currentRoster) {
+    if (!processedIds.has(r.id)) {
+      updates.push({ id: r.id, display_order: orderCounter });
+      orderCounter += 10;
+    }
+  }
 
-  // 用整數間隔 10 重新編號(1, 11, 21... 之類,方便插隊)
-  // 改用 10, 20, 30... 更直觀
-  const updates = (data || []).map((row, i) => ({
-    id: row.id, display_order: (i + 1) * 10
-  }));
+  // 執行更新
+  document.getElementById("ro-save").textContent = "儲存中...";
+  document.getElementById("ro-save").disabled = true;
+
   let okCount = 0;
   for (const u of updates) {
     const { error: e } = await sb.from("roster")
       .update({ display_order: u.display_order }).eq("id", u.id);
     if (!e) okCount++;
   }
-  showStatus("已重新編號 " + okCount + " 人");
-  openRosterOrder();  // 重畫列表
+
+  document.getElementById("ro-save").textContent = "儲存排序";
+  document.getElementById("ro-save").disabled = false;
+
+  showStatus("已更新 " + okCount + " 筆人員排序");
+  
+  // 更新後重新載入並重繪畫面
+  reloadRosterAndRefresh();
 };
 
-/* 關閉排序設定後,重新載入主畫面 */
+/* 關閉或更新排序設定後, 重新載入主畫面 */
 async function reloadRosterAndRefresh(){
   const r = await sb.from("roster").select("id,badge_no,name,display_order")
     .eq("active", true)
